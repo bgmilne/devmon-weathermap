@@ -1,0 +1,18 @@
+This is a modified version of WeatherMap 1.1.1 by Howard Jones
+http://wotsit.thingy.com/haj/
+howie@thingy.com
+
+I've written a page of documentation for my changes, to be read in conjunction
+with the original docs. That page is here:
+  
+  http://wotsit.thingy.com/haj/cacti-weathermap.html
+  
+This package also includes the cacti2weathermap.pl script by David R, with a 
+few mods to make it fit in with the package, and also an update.sh script which
+runs the cacti updater, and then both the scripts necessary to build a
+weathermap.
+
+Hopefully this little package will help someone with Cacti get where they want to be. We use it at my workplace with some success on a fair-sized (500 graph) Cacti installation.
+
+Howard Jones
+Jan 18th 2005

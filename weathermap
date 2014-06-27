@@ -1,33 +1,47 @@
 #!/usr/bin/perl
-# Network Wearthermap - version 1.1.1 (20040422)
-# http://netmon.grnet.gr/weathermap/
-# Panagiotis Christias, <christias@noc.ntua.gr>
+# Network Wearthermap - version 1.1.1hj3 (20050122)
+# http://wotsit.thingy.com/haj/cacti-weathermap.html
+# Howard Jones, <howie@thingy.com>
 
-$VERSION = "1.1.1";
+$VERSION = "1.1.1hj3";
+
+# you might need to uncomment the line below, or one like it
+# if your rrdtool libraries are not in perl's normal module search path
+# use lib qw(/usr/local/rrdtool-1.0.49/lib/perl);
 
 use Getopt::Long;
 use GD;
+use Number::Format qw(:subs);
+use File::Basename;
+use RRDs;
 
 ################################################################
 #
-# Configuration parameters
+# Configuration parameters - defaults
 #
 $WGET   = "/usr/local/bin/wget -qO -";
 $CONFIG = "weathermap.conf";
 $OUTPUT = "weathermap.png";
+$HTMLOUTPUT = "";
+$HTMLSTYLE = "static";
 $DEBUG  = 0;
 $WIDTH  = 880;
 $HEIGHT = 750;
+$BWLABELS = "percent";
+$REVERSEDIRECTION = 0;
+
 #
 ################################################################
 
 
 %optctl=();
-GetOptions(\%optctl, "config:s", "output:s", "version", "help", "debug", "") || exit(1);
+GetOptions(\%optctl, "image-uri:s", "config:s", "output:s", "version", "help", "debug", "htmloutput:s", "") || exit(1);
 
 if($optctl{"config"}) { $CONFIG = $optctl{"config"} };
 
 if($optctl{"output"}) { $OUTPUT = $optctl{"output"} };
+
+if($optctl{"htmloutput"}) { $HTMLOUTPUT = $optctl{"htmloutput"} };
 
 if($optctl{"version"}) { &version; exit; }
 
@@ -51,27 +65,52 @@ print "Opening log files...\n\n" if($DEBUG);
 foreach $link (keys %target){
 
 	$data = $target{$link};
-	print "FILE: $data\n" if($DEBUG);
+	print "\nFILE: $data\n" if($DEBUG);
 
-	if(($data =~ /^https?:\/\//i) || ($data =~ /^ftp:\/\//i) ) {
-		open(LOG, "$WGET $data |") or warn "$data: $!\n";
-	} else {
-		open(LOG, "$data") or warn "data file $data: $!\n";
-	}
+	if($data =~ /\.rrd$/i)
+	{
+		print "LINK: Reading from RRD: $data\n" if($DEBUG);
+		( $input{$link}, $output{$link} ) = read_rrd_data($data);
 
-	while(<LOG>){
-		# <!-- cuin d 5585966 -->
-		# <!-- cuout d 10589424 -->
-		if(/<\!-- cuin d (\d+) -->/){
-			$input{$link}=$1;
-			print "LINK: $link, Input: $input{$link}\n" if($DEBUG);
-		}
-		if(/<\!-- cuout d (\d+) -->/){
-			$output{$link}=$1;
-			print "LINK: $link, Output: $output{$link}\n" if($DEBUG);
-		}
+		print "LINK: $link, Input: $input{$link}\n" if($DEBUG);
+		print "LINK: $link, Output: $output{$link}\n" if($DEBUG);
 	}
-	close(LOG);
+	else
+	{
+		if(($data =~ /^https?:\/\//i) || ($data =~ /^ftp:\/\//i) ) {
+			open(LOG, "$WGET $data |") or warn "$data: $!\n";
+		} else {
+			open(LOG, "$data") or warn "data file $data: $!\n";
+		}
+
+		while(<LOG>){
+			# <!-- cuin d 5585966 -->
+			# <!-- cuout d 10589424 -->
+			if(/<\!-- cuin d (\d+) -->/){
+				if($REVERSEDIRECTION)
+				{	
+					$output{$link}=$1;
+				}
+				else
+				{
+					$input{$link}=$1;
+				}
+				print "LINK: $link, Input: $input{$link}\n" if($DEBUG);
+			}
+			if(/<\!-- cuout d (\d+) -->/){
+				if($REVERSEDIRECTION)
+				{
+					$input{$link}=$1;
+				}
+				else
+				{
+					$output{$link}=$1;
+				}
+				print "LINK: $link, Output: $output{$link}\n" if($DEBUG);
+			}
+		}
+		close(LOG);
+	}
 }
 
 print "\nCalculating rates...\n\n" if($DEBUG);
@@ -87,7 +126,7 @@ foreach $link (keys %target){
 
 	# draw lines...
 
-	$width=7;
+	$width=$linkwidth{$link};
 
 	&draw_arrow(
 		$xpos{$nodea{$link}},
@@ -100,11 +139,23 @@ foreach $link (keys %target){
 		$ypos{$nodea{$link}},
 		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
 		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
-		$width, 0, $black);
+		$width, 0, $black,$link);
+
+	if($BWLABELS eq "percent")
+	{
+		$outlabel = $outrate."%";
+		$inlabel = $inrate."%";
+	}
+	else
+	{
+		$outlabel = format_bytes($output{$link} * 8,1);
+		$inlabel = format_bytes($input{$link} * 8,1);
+	}
+
 
 	&label(&middle($xpos{$nodea{$link}},&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}})),
 		&middle($ypos{$nodea{$link}},&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}})),
-		$outrate . "%", 0);
+		$outlabel, 0, gdSmallFont,"");
 
 	&draw_arrow(
 		$xpos{$nodeb{$link}},
@@ -117,49 +168,118 @@ foreach $link (keys %target){
 		$ypos{$nodeb{$link}},
 		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
 		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
-		$width, 0, $black);
+		$width, 0, $black,$link);
+
 
 	&label(&middle($xpos{$nodeb{$link}},&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}})),
 		&middle($ypos{$nodeb{$link}},&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}})),
-		$inrate . "%", 0);
+		$inlabel, 0, gdSmallFont,"");
 }
 print "\n" if($DEBUG);
 
+# now draw in the Node labels...
 foreach(keys %xpos){
-	&label($xpos{$_},$ypos{$_},$label{$_}, 3);
+	&label($xpos{$_},$ypos{$_},$label{$_}, 3,gdLargeFont,$_);
 }
 
 
 &annotation;
+&timestamp;
 
 # print image...
 print "Generating image file $OUTPUT...\n\n" if($DEBUG);
 open(PNG,">$OUTPUT")||die("$OUTPUT: $!\n");
+binmode(PNG); # for Windows systems
 print PNG $map->png;
 close PNG;
+
+if($HTMLOUTPUT ne "")
+{
+	print "Generating HTML file $HTMLOUTPUT...\n\n" if($DEBUG);
+	open(HTML,">$HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
+
+	print HTML '<HTML><HEAD><META HTTP-EQUIV="REFRESH" CONTENT="300" /><TITLE>Network Weathermap</TITLE></HEAD><BODY>';
+
+	if($HTMLSTYLE eq "overlib")
+	{
+		print HTML "<DIV id=\"overDiv\" style=\"position:absolute; visibility:hidden; z-index:1000;\"></DIV>\n";	
+		print HTML "<SCRIPT language=\"JavaScript\" src=\"overlib_mini.js\"><!-- overLIB (c) Erik Bosrup --></SCRIPT> \n";
+	}
+
+	my ($width,$height) = $map->getBounds();
+
+	$imageuri = $optctl{'image-uri'} || $OUTPUT;
+
+	print HTML sprintf('<IMG SRC="%s" WIDTH="%s" HEIGHT="%s" BORDER=0 USEMAP="#weathermap_imap" />', $imageuri, $width, $height);
+	print HTML '<MAP NAME="weathermap_imap">';
+	print HTML $allmap;	
+	print HTML '</MAP>';
+
+	print HTML '</BODY></HTML>';
+
+	close(HTML);
+}
 
 # hint, resizing the image could make it look better
 
 exit;
 
+sub timestamp
+{
+	my $string = localtime();
+	my ($width,$height) = $map->getBounds();
+
+	my $xpos = $width - (gdSmallFont->width * (length($string) +1 ));
+
+	$map->string(gdSmallFont,
+		$xpos, 10,
+		$string, $black)
+}
 
 # print labels
 sub label{
-	my($xpos,$ypos,$label,$pad)=@_;
-	my($strwidth)=gdLargeFont->width*length($label);
-	my($strheight)=gdLargeFont->height;
-	$map->filledRectangle(
-		$xpos-$strwidth/2-$pad-2, $ypos-$strheight/2-$pad+1,
-		$xpos+$strwidth/2+$pad+1, $ypos+$strheight/2+$pad,
-		$black);
-	$map->filledRectangle(
-		$xpos-$strwidth/2-$pad-1, $ypos-$strheight/2-$pad+2,
-		$xpos+$strwidth/2+$pad, $ypos+$strheight/2+$pad-1,
-		$white);
-	$map->string(gdLargeFont,
+	my($xpos,$ypos,$label,$pad,$font,$nodename)=@_;
+
+	if(!defined($font))
+	{
+		$font = gdLargeFont;
+	}
+
+	my($strwidth)=$font->width*length($label);
+	my($strheight)=$font->height;
+
+	my @coords = ($xpos-$strwidth/2-$pad-2, $ypos-$strheight/2-$pad+1,
+		$xpos+$strwidth/2+$pad+1, $ypos+$strheight/2+$pad);
+
+
+	$map->filledRectangle(@coords,$white);
+	$map->rectangle(@coords,$black);
+	$map->string($font,
 		$xpos-$strwidth/2, $ypos-$strheight/2+1,
-		$label, $black)
+		$label, $black);
+
+	# produce some imagemap data if that's required
+	if($nodename ne "")
+	{
+		print "Producing a Rectangle for $nodename\n" if($DEBUG);
+
+		my $active_html = make_html($nodename, $overlibgraph{"NODE_".$nodename}, $infourl{"NODE_".$nodename});
+
+		if($active_html ne "")
+		{
+			my $html = "<AREA SHAPE=\"RECT\" COORDS=\"";
+			$html .= join(",",@coords) . "\" ";
+			$html .= $active_html;
+			$html .= ">\n";
+			
+			# we put rectangles at the front of the image map, otherwise they'll always lose out
+			# to the arrows already there from when the links were drawn
+			$allmap = $html.$allmap;
+		}
+	}
 }
+
+
 
 
 # print annotation
@@ -167,10 +287,6 @@ sub annotation{
 	my($title)="Traffic load";
         $strwidth=gdLargeFont->width*length($label{$_});
 	$strheight=gdLargeFont->height;
-
-#	$t=localtime(time);
-	$t=gmtime(time);
-	$map->string(gdSmallFont, 0, 785, "Last update on $t UTC", $black);
 
 	$map->filledRectangle($keyxpos,$keyypos,
 		$keyxpos+gdLargeFont->width*length($title)+10,
@@ -230,6 +346,7 @@ my($node,$link);
 print "\nReading configuration file...\n\n" if($DEBUG);
 
 $scales=0;
+$last_item = "";
 open(CONF,$config) or die "$config: $!\n";
 while(<CONF>){
 	if(/^\s*BACKGROUND\s+(\S+)/i){
@@ -238,10 +355,39 @@ while(<CONF>){
 			print "found BACKGROUND: $background\n" if($DEBUG);
 		}
 	}
+
+	if(/^\s*REVERSEDIRECTION\sYES/i)
+	{
+		$REVERSEDIRECTION=1;
+		print "Will swap in and out for ALL targets\n" if($DEBUG);
+	}
+
+	if(/^\s*BWLABELS\s(\S+)/i)
+	{
+		# 'percent' is the default, set at the top 
+		if(lc($1) eq "bytes") {$BWLABELS="bytes"; }
+		print "found BWLABELS: $BWLABELS\n" if($DEBUG);
+	}
+
+	if(/^\s*HTMLSTYLE\s(\S+)/i)
+	{
+		# 'static' is the default, set at the top 
+		if(lc($1) eq "overlib") {$HTMLSTYLE="overlib"; }
+		print "found HTMLSTYLE: $HTMLSTYLE\n" if($DEBUG);
+	}
+
 	if(/^\s*WIDTH\s+(\d+)/i){
 		if("$1" ne ""){
-			$WIDTH=$1;
-			print "found WIDTH: $WIDTH\n" if($DEBUG);
+			if($last_item eq "link")
+			{
+				$linkwidth{$link}=$1;
+				print "found WIDTH for link: $linkwidth{$link}\n" if($DEBUG);
+			}
+			else
+			{
+				$WIDTH=$1;
+				print "found WIDTH: $WIDTH\n" if($DEBUG);
+			}
 		}
 	}
 	if(/^\s*HEIGHT\s+(\d+)/i){
@@ -252,6 +398,7 @@ while(<CONF>){
 	}
 	if(/^\s*NODE\s+(\w+)/i){
 		$node=$1;
+		$last_item = "node";
 		print "found NODE: $node\n" if($DEBUG);
 	}
 	if(/^\s*POSITION\s+(\d+)\s+(\d+)/i){
@@ -266,6 +413,8 @@ while(<CONF>){
 
 	if(/^\s*LINK\s+(\S+)/i){
 		$link=$1;
+		$linkwidth{$link}=7; # some defaults
+		$last_item = "link";
 		print "found LINK: $link\n" if($DEBUG);
 	}
 	if(/^\s*NODES\s+(\S+)\s+(\S+)/i){
@@ -282,6 +431,31 @@ while(<CONF>){
 		$maxbytes{$link}=$bandwidth{$link}*1024/8;
 		print "found LINK: $link BANDWIDTH: $bandwidth{$link}\n" if($DEBUG);
 	}
+	if(/^\s*OVERLIBGRAPH\s+(\S+)/i){
+		if($last_item eq "link")
+		{
+			$overlibgraph{"LINK_".$link} = $1;	
+			print "found LINK: $link OVERLIBGRAPH: ".$overlibgraph{"LINK_".$link}."\n" if($DEBUG);
+		}
+		if($last_item eq "node")
+		{
+			$overlibgraph{"NODE_".$node} = $1;	
+			print "found NODE: $node OVERLIBGRAPH: ".$overlibgraph{"NODE_".$node}."\n" if($DEBUG);
+		}
+	}
+	if(/^\s*INFOURL\s+(\S+)/i){
+		if($last_item eq "link")
+		{
+			$infourl{"LINK_".$link} = $1;	
+			print "found LINK: $link INFOURL: ".$infourl{"LINK_".$link}."\n" if($DEBUG);
+		}
+		if($last_item eq "node")
+		{
+			$infourl{"NODE_".$node} = $1;	
+			print "found NODE: $node INFOURL: ".$infourl{"NODE_".$node}."\n" if($DEBUG);
+		}
+	}
+
 	if(/^\s*KEYPOS\s+(\d+)\s+(\d+)/i){
 		$keyxpos=$1;
 		$keyypos=$2;
@@ -319,10 +493,52 @@ sub newy{
 	return int( sin( atan2($y,$x) + atan2($b,$a) ) * sqrt( $x*$x + $y*$y ) );
 }
 
+sub make_html {
+	my($caption,$imagelink,$infolink) = @_;
 
+	my $extrahtml = "";
+
+	if($HTMLSTYLE eq 'overlib')
+	{
+		if($imagelink ne "")
+		{
+			$extrahtml .= " onmouseover=\"return overlib('<img src=$imagelink>',DELAY,250,CAPTION,'$caption');\" ";
+			$extrahtml .= " onmouseout=\"return nd();\" ";	
+		}
+	}
+
+	if($infolink ne "")
+	{
+		$extrahtml .= " HREF=\"$infolink\" ";
+	}
+
+	return $extrahtml;
+}
+
+# The guts of rama/David's cacti2weathermap, so you can do it all in one script
+sub read_rrd_data
+{
+	my($rrdsource) = @_;
+
+	my ($start,$step,$names,$data) = RRDs::fetch $rrdsource,"AVERAGE","--start","now";
+	print "RRD: $rrdsource: $start, $step\n" if($DEBUG);
+	print "RRD: Names: ",join(",",@$names),"\n" if($DEBUG);
+	print "RRD: Data: ",join(",",@$data),"\n" if($DEBUG);
+
+        foreach my $line (@$data) {
+            if( defined(@$line[0]) )
+	    {
+		print "RRD: data to return |",join("|",@$line[1], @$line[0]),"|\n" if $DEBUG;
+		return(@$line[1], @$line[0]);
+            }
+        }
+
+	# should never really get here - means poller hasn't put any data in recently
+	return (0,0);
+}
 
 sub draw_arrow {
-	my($x1,$y1,$x2,$y2,$w,$solid,$color)=($_[0],$_[1],$_[2],$_[3],$_[4],$_[5],$_[6]);
+	my($x1,$y1,$x2,$y2,$w,$solid,$color,$linkname)=($_[0],$_[1],$_[2],$_[3],$_[4],$_[5],$_[6],$_[7]);
 	my($arrow)=new GD::Polygon;
 
 	$arrow->addPt(
@@ -362,12 +578,34 @@ sub draw_arrow {
 	}else{
 		$map->polygon($arrow,$color);
 	}
+
+	if($linkname ne "")
+	{
+		print "Producing a Polygon for $linkname\n" if($DEBUG);
+
+		my $active_html = make_html($linkname, $overlibgraph{"LINK_".$linkname}, $infourl{"LINK_".$linkname});
+		if($active_html ne "")
+		{
+			my $html = "<AREA SHAPE=\"POLY\" COORDS=\"";
+			my @vertices = $arrow->vertices;
+			my @points=();
+			  foreach $v (@vertices)
+			{
+				push(@points,@$v);
+			  }
+			$html .= join(",",@points) . "\"";
+			$html .= $active_html;
+			$html .= ">\n";
+			
+			$allmap .= $html;
+		}
+	}
 }
 
 
 sub version {
         print <<EOM;
-Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
+Network Weathermap v$VERSION - http://netmon.grnet.gr/weathermap/
 EOM
 }
 
@@ -376,11 +614,12 @@ sub usage {
 Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
 Usage: $0 [OPTION]...
 
- -c, --config=FILE  configuration file (default $CONFIG)
- -o, --output=FILE  output image file default (default $OUTPUT)
- -v, --version      print version
- -h, --help         print this text
- -d, --debug        enable debug output
-
+ -c, --config=FILE    configuration file (default $CONFIG)
+ -o, --output=FILE    output image file default (default $OUTPUT)
+ -v, --version        print version
+ -h, --help           print this text
+ -d, --debug          enable debug output
+ --htmloutput=FILE    enable HTML output to FILE
+ --image-uri=URI      use URI for the IMG tag when generating HTML
 EOM
 }
