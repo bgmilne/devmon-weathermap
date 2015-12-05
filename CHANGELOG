@@ -1,3 +1,34 @@
+v1.1.2: 09 Oct 2008 - Buchan Milne
+	Migrated to Hobbit/Devmon
+	Link utilisation (percentage) and description taken from hobbitdlog
+	Added INTERFACES directive to list the interfaces on the nodes
+		(same order as NODES) for a link
+	OVERLIBGRAPH and INFOURL not required, generated from NODES and
+		INTERFACES detail for Hobbit
+	Use separate graphs for the two diffrent arrows
+	Use bb-webpage to make the html look like Hobbit
+
+v1.1.1hj3: 22 Jan 2005 (I was bored!)
+	Added direct reading of RRDs. Just use the RRD file as the TARGET	
+	Added option to allow swapping of in/out (cacti2weathermap.html gets
+	        in and out the wrong way round from RRDs! REVERSEDIRECTION
+		allows you to use 'old' configs with the current code without
+		having to re-do them.
+
+v1.1.1hj2: 22 Jan 2005
+	Added --image-uri command-line option.
+	Added OVERLIBGRAPH and INFOURL for nodes.
+	Added WIDTH option for LINKs. Default is 7 as previously.
+	Updated --help output
+	Fixed up HTML output a bit - no do-nothing imagemap areas anymore.
+
+v1.1.1hj: 19 Jan 2005
+	Initial public release.
+	Adds OVERLIBGRAPH and INFOURL config lines for LINKs
+	Adds HTML and imagemap generation
+	Adds HTMLSTYLE config option
+	Adds BWLABELS config option
+	Adds map timestamp
 v1.1.1: 3 Apr 2004
 	Added -c and -o options.
 

@@ -1,40 +1,86 @@
 #!/usr/bin/perl
-# Network Wearthermap - version 1.1.1hj3 (20050122)
-# http://wotsit.thingy.com/haj/cacti-weathermap.html
-# Howard Jones, <howie@thingy.com>
+# Network Wearthermap - version 1.1.1 (20040422)
+# http://netmon.grnet.gr/weathermap/
+# Panagiotis Christias, <christias@noc.ntua.gr>
 
-$VERSION = "1.1.1hj3";
+# Data structures
+# nodes = (
+#		omicron => (
+#			pos => [xxx,yyy]
+#			image => xxx.png,
+#			label => "Omicron",
+#			interfaces => (
+#				gi2/6 => [55, 65,"foo"],
+#				gi5/7 => [23, 45, "bar"],
+#			),
+#		eta => (),
+#	);
+# links = (
+#		omicron-eta => (
+#				nodea => omicron,
+#				nodeb => eta,
+#				inta => Gi2/6,
+#				intb => Gi5/4,
+#			),
 
-# you might need to uncomment the line below, or one like it
-# if your rrdtool libraries are not in perl's normal module search path
-# use lib qw(/usr/local/rrdtool-1.0.49/lib/perl);
+$VERSION = "1.1.2";
 
 use Getopt::Long;
 use GD;
-use Number::Format qw(:subs);
-use File::Basename;
-use RRDs;
+use Data::Dumper;
 
 ################################################################
 #
-# Configuration parameters - defaults
+# Configuration parameters
 #
 $WGET   = "/usr/local/bin/wget -qO -";
-$CONFIG = "weathermap.conf";
-$OUTPUT = "weathermap.png";
-$HTMLOUTPUT = "";
-$HTMLSTYLE = "static";
+#$HTMLSTYLE = "static";
+$HTMLSTYLE = "overlib";
 $DEBUG  = 0;
-$WIDTH  = 880;
-$HEIGHT = 750;
+if ($ENV{'DEBUG'}) { $DEBUG=1;}
+#$WIDTH  = 880;
+$WIDTH  = 750;
+#$HEIGHT = 750;
+$HEIGHT = 550;
 $BWLABELS = "percent";
 $REVERSEDIRECTION = 0;
-
+$BB = "/usr/lib64/hobbit/client/bin/bb";
+$BBDISP = "localhost";
+$BBWEBHOST = "http://localhost";
+$BBWEBPAGE = "/usr/lib/hobbit/server/bin/bb-webpage";
+$CGIBINURL = "/hobbit-cgi";
+#$BBWEBHOSTURL = "http://localhost/hobbit"
 #
 ################################################################
+if ($ENV{'BBHOME'}) {
+	$CONFIG = "$ENV{'BBHOME'}/etc/weathermap.conf";
+	$BBWEBPAGE = "$ENV{'BBHOME'}/bin/bb-webpage";
+} else {
+	$CONFIG = "weathermap.conf";
+}
+if ($ENV{'BBWWW'}) {
+	$OUTPUT = "$ENV{'BBWWW'}/weathermap.png";
+	$HTMLOUTPUT = "$ENV{BBWWW}/weathermap.html";
+} else {
+	$OUTPUT = "weathermap.png";
+	$HTMLOUTPUT = "";
+}
 
+if ($ENV{'BB'}) {
+	$BB = $ENV{'BB'};
+}
+if ($ENV{'BBDISP'}) {
+	$BBDISP = $ENV{'BBDISP'};
+}
+if ($ENV{'BBWEBHOST'}) {
+	$BBWEBHOST = $ENV{'BBWEBHOST'};
+}
+if ($ENV{'CGIBINURL'}) {
+	$CGIBINURL = $ENV{'CGIBINURL'};
+}
 
 %optctl=();
+#GetOptions(\%optctl, "config:s", "output:s", "version", "help", "debug", "") || exit(1);
 GetOptions(\%optctl, "image-uri:s", "config:s", "output:s", "version", "help", "debug", "htmloutput:s", "") || exit(1);
 
 if($optctl{"config"}) { $CONFIG = $optctl{"config"} };
@@ -50,96 +96,95 @@ if($optctl{"help"}) { &usage; exit; }
 if($optctl{"debug"}) { $DEBUG=1; }
 
 &read_config($CONFIG);
+print Dumper(%nodes) if ($DEBUG);
 
 if($background){
 	open (PNG,"$background") || die "$background: $!\n";
 	$map = newFromPng GD::Image(PNG) || die "newFromPng failed.";
+	$white = $map->colorClosest(255,255,255);
+	$map->transparent($white);
 	close PNG;
 } else {
-	$map=new GD::Image($WIDTH,$HEIGHT)
+	$map=new GD::Image($WIDTH,$HEIGHT);
+	$white = $map->colorAllocate(255,255,255);
+        $map->transparent($white);
+        $map->interlaced('true');
 }
 
 &alloc_colors;
 
 print "Opening log files...\n\n" if($DEBUG);
-foreach $link (keys %target){
 
-	$data = $target{$link};
-	print "\nFILE: $data\n" if($DEBUG);
+foreach $thisnode (keys %nodes) {
+	print "Finding values for $thisnode\n" if ($DEBUG);
+	my @interfaces = keys %{$nodes{$thisnode}{'interfaces'}};
+		open(DEVMON, "$BB $BBDISP \"hobbitdlog $thisnode.if_load\" |") or warn "$data: $!\n";
 
-	if($data =~ /\.rrd$/i)
-	{
-		print "LINK: Reading from RRD: $data\n" if($DEBUG);
-		( $input{$link}, $output{$link} ) = read_rrd_data($data);
+	while(<DEVMON>){
+		if (/<tr><td>(\S+) ?([^<]+)?<\/td><td>[^<]+<\/td><td>[^<]+\((\d+\.\d+)\%\)<\/td><td>[^<]+\((\d+\.\d+)\%\)(.+)$/) {
+			my $intname = $1;
+			my $intdesc = $2;
+			my $inrate = $3;
+			my $outrate = $4;
+			#print "$thisnode interface $intname: desc: $intdesc, in $inrate, out $outrate\n" if ($DEBUG);
 
-		print "LINK: $link, Input: $input{$link}\n" if($DEBUG);
-		print "LINK: $link, Output: $output{$link}\n" if($DEBUG);
-	}
-	else
-	{
-		if(($data =~ /^https?:\/\//i) || ($data =~ /^ftp:\/\//i) ) {
-			open(LOG, "$WGET $data |") or warn "$data: $!\n";
-		} else {
-			open(LOG, "$data") or warn "data file $data: $!\n";
+		#next if (grep {!/$intname/} @interfaces);
+		#print "Matched $intname, storing values\n" if ($DEBUG);
+		$nodes{$thisnode}{'interfaces'}{$intname} = [$inrate,$outrate,$intdesc];
+		#$nodes{$thisnode}{'interfaces'}{'label'} = $intdesc;
 		}
-
-		while(<LOG>){
-			# <!-- cuin d 5585966 -->
-			# <!-- cuout d 10589424 -->
-			if(/<\!-- cuin d (\d+) -->/){
-				if($REVERSEDIRECTION)
-				{	
-					$output{$link}=$1;
-				}
-				else
-				{
-					$input{$link}=$1;
-				}
-				print "LINK: $link, Input: $input{$link}\n" if($DEBUG);
-			}
-			if(/<\!-- cuout d (\d+) -->/){
-				if($REVERSEDIRECTION)
-				{
-					$input{$link}=$1;
-				}
-				else
-				{
-					$output{$link}=$1;
-				}
-				print "LINK: $link, Output: $output{$link}\n" if($DEBUG);
-			}
-		}
-		close(LOG);
 	}
+	close(DEVMON);
 }
 
 print "\nCalculating rates...\n\n" if($DEBUG);
+print Dumper(%links) if ($DEBUG);
+#print "Just dumped %links\n";
+#print Dumper(%nodes) if ($DEBUG);
 
-foreach $link (keys %target){
-	$outrate=(int(($output{$link}/$maxbytes{$link}+0.005)*100)>100) ? 100:int(($output{$link}/$maxbytes{$link}+0.005)*100);
-	$inrate=(int(($input{$link}/$maxbytes{$link}+0.005)*100)>100) ? 100:int(($input{$link}/$maxbytes{$link}+0.005)*100);
+foreach $link (keys %links) {
+	print "Finding rates for $link:\n" if ($DEBUG);
+
+	$node1 = $links{$link}{'nodea'};
+	$node2 = $links{$link}{'nodeb'};
+	$int1 = $links{$link}{'inta'};
+	$int2 = $links{$link}{'intb'};
+	print "Link details: $node1 - $int1 to $node2 - $int2\n" if ($DEBUG);
+
+	#@link1 = @{$nodes{$links{$link}{'nodea'}}{$links{$link}{'inta'}}};
+	#@link2 = @{$nodes{$links{$link}{'nodeb'}}{$links{$link}{'intb'}}};
+	@link1 = @{$nodes{$node1}{'interfaces'}{$int1}};
+	@link2 = @{$nodes{$node2}{'interfaces'}{$int2}};
+	@posa = @{$nodes{$node1}{'pos'}};
+	@posb = @{$nodes{$node2}{'pos'}};
+	print "In values: $link1[0] == $link2[1], Out values: $link1[1] == $link2[0]\n" if ($DEBUG);
+	$outrate = $link1[1] != "" ? $link1[1] : $link2[0];
+	$inrate = $link2[1] != "" ? $link2[1] : $link1[0];
 
 	if($output{$link} != 0 && $outrate == 0) { $outrate=1 }
 	if($input{$link} != 0 && $inrate == 0) { $inrate=1 }
 
-	print "$target{$link}: outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
+	#print "$target{$link}: outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
+	print "$link from $posa[0],$posa[1] to $posb[0],$posb[1] outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
 
 	# draw lines...
 
+	$width=7;
 	$width=$linkwidth{$link};
 
 	&draw_arrow(
-		$xpos{$nodea{$link}},
-		$ypos{$nodea{$link}},
-		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
-		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
+		$posa[0],
+		$posa[1],
+		&middle($posa[0],$posb[0]),
+		&middle($posa[1],$posb[1]),
 		$width, 1, &select_color($outrate));
+
 	&draw_arrow(
-		$xpos{$nodea{$link}},
-		$ypos{$nodea{$link}},
-		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
-		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
-		$width, 0, $black,$link);
+		$posa[0],
+		$posa[1],
+		&middle($posa[0],$posb[0]),
+		&middle($posa[1],$posb[1]),
+		$width, 0, $black,$link,0);
 
 	if($BWLABELS eq "percent")
 	{
@@ -153,38 +198,38 @@ foreach $link (keys %target){
 	}
 
 
-	&label(&middle($xpos{$nodea{$link}},&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}})),
-		&middle($ypos{$nodea{$link}},&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}})),
-		$outlabel, 0, gdSmallFont,"");
+	&label(&middle($posa[0],&middle($posa[0],$posb[0])),
+		&middle($posa[1],&middle($posa[1],$posb[1])),
+		$outrate . "%", 0,gdSmallFont,"");
+
 
 	&draw_arrow(
-		$xpos{$nodeb{$link}},
-		$ypos{$nodeb{$link}},
-		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
-		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
+		$posb[0],
+		$posb[1],
+		&middle($posa[0],$posb[0]),
+		&middle($posa[1],$posb[1]),
 		$width, 1, &select_color($inrate));
+
 	&draw_arrow(
-		$xpos{$nodeb{$link}},
-		$ypos{$nodeb{$link}},
-		&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}}),
-		&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}}),
-		$width, 0, $black,$link);
+		$posb[0],
+		$posb[1],
+		&middle($posa[0],$posb[0]),
+		&middle($posa[1],$posb[1]),
+		$width, 0, $black,$link,1);
 
 
-	&label(&middle($xpos{$nodeb{$link}},&middle($xpos{$nodea{$link}},$xpos{$nodeb{$link}})),
-		&middle($ypos{$nodeb{$link}},&middle($ypos{$nodea{$link}},$ypos{$nodeb{$link}})),
-		$inlabel, 0, gdSmallFont,"");
+	&label(&middle($posb[0],&middle($posa[0],$posb[0])),
+		&middle($posb[1],&middle($posa[1],$posb[1])),
+		$inrate . "%", 0, gdSmallFont,"");
+
 }
 print "\n" if($DEBUG);
 
-# now draw in the Node labels...
-foreach(keys %xpos){
-	&label($xpos{$_},$ypos{$_},$label{$_}, 3,gdLargeFont,$_);
-}
-
+foreach (keys %nodes) {
+	&label($nodes{$_}{'pos'}[0],$nodes{$_}{'pos'}[1],$nodes{$_}{'label'},3,gdLargeFont,$_);}
 
 &annotation;
-&timestamp;
+#&timestamp;
 
 # print image...
 print "Generating image file $OUTPUT...\n\n" if($DEBUG);
@@ -196,9 +241,10 @@ close PNG;
 if($HTMLOUTPUT ne "")
 {
 	print "Generating HTML file $HTMLOUTPUT...\n\n" if($DEBUG);
-	open(HTML,">$HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
+	#open(HTML,">$HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
+	open(HTML,"|$BBWEBPAGE --color=green > $HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
 
-	print HTML '<HTML><HEAD><META HTTP-EQUIV="REFRESH" CONTENT="300" /><TITLE>Network Weathermap</TITLE></HEAD><BODY>';
+	#print HTML '<HTML><HEAD><META HTTP-EQUIV="REFRESH" CONTENT="300" /><TITLE>Network Weathermap</TITLE></HEAD><BODY>';
 
 	if($HTMLSTYLE eq "overlib")
 	{
@@ -210,12 +256,12 @@ if($HTMLOUTPUT ne "")
 
 	$imageuri = $optctl{'image-uri'} || $OUTPUT;
 
-	print HTML sprintf('<IMG SRC="%s" WIDTH="%s" HEIGHT="%s" BORDER=0 USEMAP="#weathermap_imap" />', $imageuri, $width, $height);
+	print HTML sprintf('<CENTER><IMG SRC="%s" WIDTH="%s" HEIGHT="%s" ALIGN=center BORDER=0 USEMAP="#weathermap_imap" /></CENTER>', $imageuri, $width, $height);
 	print HTML '<MAP NAME="weathermap_imap">';
 	print HTML $allmap;	
 	print HTML '</MAP>';
 
-	print HTML '</BODY></HTML>';
+	#print HTML '</BODY></HTML>';
 
 	close(HTML);
 }
@@ -262,8 +308,10 @@ sub label{
 	if($nodename ne "")
 	{
 		print "Producing a Rectangle for $nodename\n" if($DEBUG);
+		$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $nodename . "&service=la.&graph_height=120&graph_width=576&graph=hourly";
+		$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $nodename . "&SERVICE=trends";
 
-		my $active_html = make_html($nodename, $overlibgraph{"NODE_".$nodename}, $infourl{"NODE_".$nodename});
+		my $active_html = make_html($nodename, $overlibgraphurl, $infourl);
 
 		if($active_html ne "")
 		{
@@ -280,26 +328,28 @@ sub label{
 }
 
 
-
-
 # print annotation
 sub annotation{
 	my($title)="Traffic load";
         $strwidth=gdLargeFont->width*length($label{$_});
 	$strheight=gdLargeFont->height;
 
-	$map->filledRectangle($keyxpos,$keyypos,
-		$keyxpos+gdLargeFont->width*length($title)+10,
-		$keyypos+gdLargeFont->height*($scales+1)+10,
-		$gray);
-	$map->rectangle($keyxpos,$keyypos,
-		$keyxpos+gdLargeFont->width*length($title)+10,
-		$keyypos+gdLargeFont->height*($scales+1)+10,
-		$black);
+#	$t=localtime(time);
+	$t=gmtime(time);
+	$map->string(gdSmallFont, 0, 785, "Last update on $t UTC", $black);
+
+	#$map->filledRectangle($keyxpos,$keyypos,
+	#	$keyxpos+gdLargeFont->width*length($title)+10,
+	#	$keyypos+gdLargeFont->height*($scales+1)+10,
+	#	$gray);
+	#$map->rectangle($keyxpos,$keyypos,
+	#	$keyxpos+gdLargeFont->width*length($title)+10,
+	#	$keyypos+gdLargeFont->height*($scales+1)+10,
+	#	$black);
 	$map->string(gdLargeFont,
 		$keyxpos+4,
 		$keyypos+4,
-		"Traffic load",  $black);
+		"Traffic load",  $white);
 
 	my($i)=1;
 	foreach(sort {$scale_low{$a}<=>$scale_low{$b}} keys %scale_low){
@@ -312,7 +362,7 @@ sub annotation{
 		$map->string(gdLargeFont,
 			$keyxpos+6+20,
 			$keyypos+gdLargeFont->height*$i+8,
-			"$scale_low{$_}-$scale_high{$_}%", $black);
+			"$scale_low{$_}-$scale_high{$_}%", $white);
 		$i++
 	}
 }
@@ -322,6 +372,7 @@ sub select_color {
 	if($rate=="0"){return($darkgray)}
 	foreach(sort {$scale_high{$a}<=>$scale_high{$b}} keys %scale_high){
 		if($scale_low{$_}<=$rate && $rate<=$scale_high{$_}){
+			print "Color for $rate is $color{$_}\n" if ($DEBUG);
 			return($color{$_});
 		}
 	}
@@ -355,27 +406,12 @@ while(<CONF>){
 			print "found BACKGROUND: $background\n" if($DEBUG);
 		}
 	}
-
-	if(/^\s*REVERSEDIRECTION\sYES/i)
-	{
-		$REVERSEDIRECTION=1;
-		print "Will swap in and out for ALL targets\n" if($DEBUG);
-	}
-
-	if(/^\s*BWLABELS\s(\S+)/i)
-	{
-		# 'percent' is the default, set at the top 
-		if(lc($1) eq "bytes") {$BWLABELS="bytes"; }
-		print "found BWLABELS: $BWLABELS\n" if($DEBUG);
-	}
-
 	if(/^\s*HTMLSTYLE\s(\S+)/i)
 	{
 		# 'static' is the default, set at the top 
 		if(lc($1) eq "overlib") {$HTMLSTYLE="overlib"; }
 		print "found HTMLSTYLE: $HTMLSTYLE\n" if($DEBUG);
 	}
-
 	if(/^\s*WIDTH\s+(\d+)/i){
 		if("$1" ne ""){
 			if($last_item eq "link")
@@ -396,7 +432,7 @@ while(<CONF>){
 			print "found HEIGHT: $HEIGHT\n" if($DEBUG);
 		}
 	}
-	if(/^\s*NODE\s+(\w+)/i){
+	if(/^\s*NODE\s+(\S+)/i){
 		$node=$1;
 		$last_item = "node";
 		print "found NODE: $node\n" if($DEBUG);
@@ -404,10 +440,13 @@ while(<CONF>){
 	if(/^\s*POSITION\s+(\d+)\s+(\d+)/i){
 		$xpos{$node}=$1;
 		$ypos{$node}=$2;
+		$nodes{$node}{'pos'} = ([$1,$2]);
+		#$nodes{$node}{'ypos'} = $2;
 		print "found NODE: $node XPOS: $xpos{$node} YPOS: $xpos{$node}\n" if($DEBUG);
 	}
 	if(/^\s*LABEL\s+(\S+)/i){
 		$label{$node}=$1;
+		$nodes{$node}{'label'} = $1;
 		print "found NODE: $node LABEL: $label{$node}\n" if($DEBUG);
 	}
 
@@ -418,10 +457,20 @@ while(<CONF>){
 		print "found LINK: $link\n" if($DEBUG);
 	}
 	if(/^\s*NODES\s+(\S+)\s+(\S+)/i){
-		$nodea{$link}=$1;
-		$nodeb{$link}=$2;
-		print "found LINK: $link NODEA: $nodea{$link} NODEB: $nodeb{$link}\n" if($DEBUG);
+		$nodea=$1;
+		$nodeb=$2;
+		$links{$link}{'nodea'} = $1;
+		$links{$link}{'nodeb'} = $2;
+		print "found LINK: $link NODEA: $nodea NODEB: $nodeb\n" if($DEBUG);
 	}
+	if(/^\s*INTERFACES\s+(\S+)\s+(\S+)/i){
+		$links{$link}{'inta'} = $1;
+		$links{$link}{'intb'} = $2;
+		$nodes{$nodea}{'interfaces'}{$1}=undef;
+		$nodes{$nodeb}{'interfaces'}{$2}=undef;
+		print "found LINK interfaces: $link $nodea: $1 $nodeb: $2\n" if($DEBUG);
+	}
+
 	if(/^\s*TARGET\s+(\S+)/i){
 		$target{$link}=$1;
 		print "found LINK: $link TARGET: $target{$link}\n" if($DEBUG);
@@ -431,31 +480,6 @@ while(<CONF>){
 		$maxbytes{$link}=$bandwidth{$link}*1024/8;
 		print "found LINK: $link BANDWIDTH: $bandwidth{$link}\n" if($DEBUG);
 	}
-	if(/^\s*OVERLIBGRAPH\s+(\S+)/i){
-		if($last_item eq "link")
-		{
-			$overlibgraph{"LINK_".$link} = $1;	
-			print "found LINK: $link OVERLIBGRAPH: ".$overlibgraph{"LINK_".$link}."\n" if($DEBUG);
-		}
-		if($last_item eq "node")
-		{
-			$overlibgraph{"NODE_".$node} = $1;	
-			print "found NODE: $node OVERLIBGRAPH: ".$overlibgraph{"NODE_".$node}."\n" if($DEBUG);
-		}
-	}
-	if(/^\s*INFOURL\s+(\S+)/i){
-		if($last_item eq "link")
-		{
-			$infourl{"LINK_".$link} = $1;	
-			print "found LINK: $link INFOURL: ".$infourl{"LINK_".$link}."\n" if($DEBUG);
-		}
-		if($last_item eq "node")
-		{
-			$infourl{"NODE_".$node} = $1;	
-			print "found NODE: $node INFOURL: ".$infourl{"NODE_".$node}."\n" if($DEBUG);
-		}
-	}
-
 	if(/^\s*KEYPOS\s+(\d+)\s+(\d+)/i){
 		$keyxpos=$1;
 		$keyypos=$2;
@@ -515,30 +539,24 @@ sub make_html {
 	return $extrahtml;
 }
 
-# The guts of rama/David's cacti2weathermap, so you can do it all in one script
-sub read_rrd_data
-{
-	my($rrdsource) = @_;
-
-	my ($start,$step,$names,$data) = RRDs::fetch $rrdsource,"AVERAGE","--start","now";
-	print "RRD: $rrdsource: $start, $step\n" if($DEBUG);
-	print "RRD: Names: ",join(",",@$names),"\n" if($DEBUG);
-	print "RRD: Data: ",join(",",@$data),"\n" if($DEBUG);
-
-        foreach my $line (@$data) {
-            if( defined(@$line[0]) )
-	    {
-		print "RRD: data to return |",join("|",@$line[1], @$line[0]),"|\n" if $DEBUG;
-		return(@$line[1], @$line[0]);
-            }
-        }
-
-	# should never really get here - means poller hasn't put any data in recently
-	return (0,0);
-}
 
 sub draw_arrow {
-	my($x1,$y1,$x2,$y2,$w,$solid,$color,$linkname)=($_[0],$_[1],$_[2],$_[3],$_[4],$_[5],$_[6],$_[7]);
+	my($x1,$y1,$x2,$y2,$w,$solid,$color,$linkname,$side)=($_[0],$_[1],$_[2],$_[3],$_[4],$_[5],$_[6],$_[7],$_[8]);
+	if ($side eq 0 ) {
+	        $node = $links{$linkname}{'nodea'};
+	        $int = $links{$linkname}{'inta'};
+		$desc = $node . ":" . $int . " - " . $nodes{$node1}{'interfaces'}{$int1}[2];
+	} elsif ($side eq 1) {
+	        $node = $links{$linkname}{'nodeb'};
+	        $int = $links{$linkname}{'intb'};
+		$desc = $node . ":" . $int . " - " . $nodes{$node2}{'interfaces'}{$int2}[2];
+	}
+	$int =~ s/\//_/g;
+	#$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576&graph=hourly";
+	$hosturl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576";
+	#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $node . "&SERVICE=trends";
+	$overlibgraphurl = $hosturl . "&graph=hourly";
+	$infourl = $hosturl . "&color=green&action=menu";
 	my($arrow)=new GD::Polygon;
 
 	$arrow->addPt(
@@ -583,7 +601,7 @@ sub draw_arrow {
 	{
 		print "Producing a Polygon for $linkname\n" if($DEBUG);
 
-		my $active_html = make_html($linkname, $overlibgraph{"LINK_".$linkname}, $infourl{"LINK_".$linkname});
+		my $active_html = make_html($linkname . " - " . $desc, $overlibgraphurl, $infourl);
 		if($active_html ne "")
 		{
 			my $html = "<AREA SHAPE=\"POLY\" COORDS=\"";
@@ -605,7 +623,7 @@ sub draw_arrow {
 
 sub version {
         print <<EOM;
-Network Weathermap v$VERSION - http://netmon.grnet.gr/weathermap/
+Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
 EOM
 }
 
@@ -614,12 +632,13 @@ sub usage {
 Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
 Usage: $0 [OPTION]...
 
- -c, --config=FILE    configuration file (default $CONFIG)
- -o, --output=FILE    output image file default (default $OUTPUT)
- -v, --version        print version
- -h, --help           print this text
- -d, --debug          enable debug output
- --htmloutput=FILE    enable HTML output to FILE
- --image-uri=URI      use URI for the IMG tag when generating HTML
+ -c, --config=FILE  configuration file (default $CONFIG)
+ -o, --output=FILE  output image file default (default $OUTPUT)
+ -v, --version      print version
+ -h, --help         print this text
+ -d, --debug        enable debug output
+ --htmloutput=FILE  enable HTML output to FILE
+ --image-uri=URI    use URI for the IMG tag when generating HTML
+
 EOM
 }
