@@ -1,0 +1,195 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>weathermap.pl - A Network Weathermap script for Hobbit/Xymon and Devmon</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body style="background-color: white">
+
+<p><a name="__index__"></a></p>
+<!-- INDEX BEGIN -->
+
+<ul>
+
+	<li><a href="#name">NAME</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<li><a href="#description">DESCRIPTION</a></li>
+	<li><a href="#configuration_file_syntax">CONFIGURATION FILE SYNTAX</a></li>
+	<ul>
+
+		<li><a href="#node_options">NODE options</a></li>
+		<li><a href="#link_options">Link Options </a></li>
+		<li><a href="#global_options">Global options</a></li>
+	</ul>
+
+</ul>
+<!-- INDEX END -->
+
+<hr />
+<p>
+</p>
+<h1><a name="name">NAME</a></h1>
+<p>weathermap.pl - A Network Weathermap script for Hobbit/Xymon and Devmon</p>
+<p>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<pre>
+ -c, --config=FILE  configuration file or directory of configuration files
+ -o, --output=FILE  output image file (or directory in the case of multiple maps)
+                    to write to
+ --htmloutput=FILE  enable HTML output to FILE, or a directory
+ --image-uri=URI    use URI for the IMG tag when generating HTML
+ -s, --scale=INT    Scale the entire map by an integer value (for large displays)
+ -f, --font=FILE    Default TTF font to use (for FONTS 1-5 when scaled)
+ -v, --version      print version
+ -h, --help         print this text
+ -d, --debug        enable debug output</pre>
+<p>
+</p>
+<hr />
+<h1><a name="description">DESCRIPTION</a></h1>
+<p>weathermap.pl is a perl script to generate a weathermap-like diagram of a network.</p>
+<p>This version, derived from Network Wearthermap - version 1.1.1 (20040422), available at
+<a href="http://netmon.grnet.gr/weathermap/">http://netmon.grnet.gr/weathermap/</a>, has been modified as follows:</p>
+<ul>
+<li>
+<p>All data required to generate values (e.g. link utilisation) is queried from 
+Hobbit/Xymon. By default, link values will be determined from the table entry
+in the if_load test that matches the INTERFACES value provided in the map
+configuration file for that end of the link. Additionally, the ``overlib''
+popups over links will include the link description (if available to devmon).
+Thus, the default behaviour should work well with a Hobbit/Xymon and Devmon 
+setup monitoring network devices, and should require much less configuration
+(and significantly easier, if you are happy to edit config files) than most 
+other weathermap implementations.</p>
+</li>
+<li>
+<p>By default, an overlib graph of the CPU utilisation of the device is offered
+for mouseover events on devices.</p>
+</li>
+<li>
+<p>Support for the majority of the configuration file syntax used by PHP Weathermap
+(from <a href="http://www.network-weathermap.com">http://www.network-weathermap.com</a>) has been added.</p>
+</li>
+<li>
+<p>If all the options that take a file name are directories, all configuration
+files with name ending in .conf will be processed, and the image and output
+file names will be the part of the file name preceding .conf. E.g., if
+the options -c /etc/xymon/weathermap -o /var/lib/xymon/www/weathermap are used,
+and /etc/xymon/weathermap contains lan.conf and wan.conf, maps will created
+for each, as lan.html with lan.png, and wan.conf with wan.png respectively.</p>
+</li>
+<li>
+<p>Defaults for a number of options are taken from Xymon/Hobbit environment
+variables, for good default operation from the hobbitlaunch.</p>
+</li>
+</ul>
+<p>
+</p>
+<hr />
+<h1><a name="configuration_file_syntax">CONFIGURATION FILE SYNTAX</a></h1>
+<p>The configuration file consists of global options, then NODE and LINK sections.</p>
+<p>PHP Network Weathermap configuration directives (<a href="http://www.network-weathermap.com/manual/latest/pages/config-reference.html">http://www.network-weathermap.com/manual/latest/pages/config-reference.html</a>)  
+and their support status in this script:</p>
+<p>
+</p>
+<h2><a name="node_options">NODE options</a></h2>
+<pre>
+        NODE &lt;nodename&gt;                 Must be hostname used by Xymon/Devmon
+        POSITION x y                    y
+        LABEL labeltext                 y Name that will be displayed on map for node 
+        TARGET &lt;rrd&gt;                    N/A
+        USESCALE scalename              n
+        MAXVALUE threshold              N/A Uses Hobbit status by default
+        ICON filename                   y Except 'none','box','rbox','round'
+        USEICONSCALE                    N/A Uses Hobbit status by default
+        LABELOFFSET x y or x DIR        n
+        LABELANGLE (0|90|180|270)       n
+        LABELFONT ([1-5])               y Built-in fonts, and fonts defined with FONTDEFINE
+        COLOR                           n, use Hobbit status to set label background color
+        INFOURL url                     N/A Use Hobbit by default
+        OVERLIBGRAPH url                N/A Use Hobbit by default
+        OVERLIBWIDTH x                  n
+        OVERLIBHEIGHT y                 n
+        OVERLIBCAPTION text             N/A Use Hobbit/Devmon by default
+        NOTES   text                    n
+        SET                             n</pre>
+<p>
+</p>
+<h2><a name="link_options">Link Options</a></h2>
+<pre>
+
+        LINK &lt;linkname&gt;                 y Link name, must be unique, does not appear anywhere
+        NODES                           y (no offset support) nodenames of nodes to link
+        TARGET                          y, but format is hobbit:testname:instancename hobbit:testname:instancename
+                                                e.g.: hobbit:if_load:Gi2/5 hobbit:if_load:Gi2/4
+                                                but hobbit: is optional, and test defaults to
+                                                if_load, so in many caes you can use:
+                                                TARGET Gi2/5 Gi2/6
+        USESCALE                        n
+        WIDTH                           y
+        BANDWIDTH                       n (Uses Devmon's bandwidth calculation)
+        DUPLEX                          n (In future could support Devmon cdp test)
+        BWLABEL                         n
+        INBWFORMAT                      n
+        OUTBWFORMAT                     n
+        BWSTYLE ['classic'|'angled']    n
+        BWLABELPOS                      n
+        BWFONT                          n
+        INCOMMENT                       n Uses Interface name for Devmon/if_load
+        OUTCOMMENT                      n Uses Interface name for Devmon/if_load
+        COMMENTFONT                     n
+        COMMENTPOS                      n
+        SPLITPOS x ([50])               n
+        COLOR                           n (Determined by Hobbit status color)
+        INFOURL                         n
+        ININFOURL                       n
+        OUTINFOURL                      n
+        OVERLIBGRAPH                    n Uses Hobbit based on TARGET value
+        INOVERLIBGRAPH                  n Uses Hobbit based on TARGET value
+        OUTOVERLIBGRAPH                 n Uses Hobbit based on TARGET value
+        OVERLIBWIDTH                    n
+        OVERLIBHEIGHT                   n
+        OVERLIBCAPTION                  N/A Uses Interface name from Devmon/if_load
+        INOVERLIBCAPTION                N/A Uses Interface name from Devmon/if_load     
+        OUTOVERLIBCAPTION               N/A Uses Interface name from Devmon/if_load     
+        NOTES                           n
+        INNOTES                         n
+        OUTNOTES                        n
+        VIA                             y
+        LINKSTYLE                       n
+        ARROWSTYLE                      n
+        SET                             n</pre>
+<p>
+</p>
+<h2><a name="global_options">Global options</a></h2>
+<pre>
+        BACKGROUND                                      y
+        WIDTH                                           y
+        HEIGHT                                          y
+        HTMLOUTPUTFILE                                  n
+        IMAGEOUTPUTFILE                                 n (should support png, jpeg and gif)
+        FONTDEFINE fontnumber ttffile size              y
+        *FONT fontnumber - TITLEFONT,KEYFONT,TIMEFONT   y
+        *COLOR                                          n
+        TIMEPOS                                         y
+        TITLE,TITLEFONT,TITLECOLOR                      y (except TITLEFONT)
+        TITLEPOS                                        y
+        KILO                                            n
+        HTMLSTYLE                                       y
+        SCALE [scalename] min max r g b [r2 g2 b2] [tagtext]    y except r2 g2 b2
+        KEYPOS [scalename] x y [headingstring]          y (except scalename)
+        KEYFONT                                         y
+        KEYTEXTCOLOR                                    y
+        KEYBGCOLOR                                      y
+        KEYOUTLINECOLOR                         y
+        KEYSTYLE [scalename] stylename=['classic','vertical','horizontal'] [size] n
+        SET                                             n</pre>
+
+</body>
+
+</html>
