@@ -1,3 +1,13 @@
+v1.1.4:	17 Mar 2009 - Buchan Milne
+	Add POD documentation (and HTML export)
+	Add support for scaling by an integer factor
+	Add TTF fonts and font scaling
+	Add support for multiple maps
+	Generate an index page in the case of multiple maps
+	Add support for more configuration cacti weathermap directives
+	Support gif and jpg output formats
+	Add rpm .spec file (use 'rpm -ta <tarball>' to package)
+
 v1.1.3: 24 Oct 2008 - Buchan Milne
 	Add ICON keyword for an image depicting the node
 	Add VIA keyword for links to allow one inflection point
