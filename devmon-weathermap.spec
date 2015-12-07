@@ -3,13 +3,14 @@
 #Arch is not noarch, since hobbit home dir is arch-dependant :-(
 
 Name: devmon-weathermap
-Version: 1.1.4
+Version: 1.1.5
 Source: %{name}-%{version}.tar.gz
 License: GPL
 Group: Monitoring
 Summary: Network Weather Map for Devmon and Hobbit/Xymon
 Release: %mkrel 1
 Requires: %{hobbit}
+Requires: optipng
 BuildRoot: %{_tmppath}/%{name}-root
 
 %description

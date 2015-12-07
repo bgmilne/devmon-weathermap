@@ -1,3 +1,10 @@
+v1.1.5: 10 Jun 2009 - Buchan Milne
+	Add support for an image compressing command, defaults to optipng
+	Generate png and html to temporary files to avoid serving broken files
+	Normalise degugging messages
+	Fix status colour selection
+	Some fixes for multiple maps
+
 v1.1.4:	17 Mar 2009 - Buchan Milne
 	Add POD documentation (and HTML export)
 	Add support for scaling by an integer factor

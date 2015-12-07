@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# Network Weathermap for Devmon version 1.1.3 (20081023)
+# Network Weathermap for Devmon version 1.1.5 (20090610)
 # Derived from:
 # Network Wearthermap - version 1.1.1 (20040422)
 # http://netmon.grnet.gr/weathermap/
@@ -193,7 +193,7 @@ and their support status in this script:
 
 =cut
 
-$VERSION = "1.1.3";
+$VERSION = "1.1.5";
 
 use Getopt::Long 2.32;
 use GD;
@@ -225,6 +225,7 @@ $SCALE=1;
 #$TTFONT="/etc/hobbit/LiberationSans-Regular.ttf";
 $TTFONT="/usr/share/rrdtool/fonts/DejaVuSansMono-Roman.ttf";
 $TTFONT="/usr/share/fonts/TTF/dejavu/DejaVuSansCondensed.ttf";
+$IMGCOMPRESS="/usr/bin/optipng";
 @keytextcolor = (255,0,0);
 #$TTFONT="/usr/share/fonts/bitstream-vera/Vera.ttf";
 $FONTSIZE="12";
@@ -239,24 +240,22 @@ my @mapsasked;
 if ($ENV{'BBHOME'}) {
 	#$CONFIG = "$ENV{'BBHOME'}/etc/weathermap.conf";
 	$CONFIG = "$ENV{'BBHOME'}/etc/weathermap";
-	@mapsasked = ("$ENV{'BBHOME'}/etc/weathermap");
+	@defaultmaps = ("$ENV{'BBHOME'}/etc/weathermap");
 	$BBWEBPAGE = "$ENV{'BBHOME'}/bin/bb-webpage";
 	$ICONDIR = "$ENV{'BBHOME'}/etc/weathermap";
-	$TTFONE = "$ENV{'BBHOME'}/etc/weathermap/LiberationMono-Regular.ttf";
+	$TTFONT = "$ENV{'BBHOME'}/etc/LiberationMono-Regular.ttf";
 } else {
 	$CONFIG = "weathermap.conf";
-	@mapsasked = ("weathermap.con");
+	@defaultmaps = ("weathermap.conf");
 }
 if ($ENV{'BBWWW'}) {
-	#$OUTPUT = "$ENV{'BBWWW'}/weathermap.png";
+	$OUTPUT = "$ENV{'BBWWW'}/weathermap";
 	$HTMLOUTPUT = "$ENV{BBWWW}/weathermap";
-	$OUTPUT = "$ENV{BBWWW}/weathermap";
 	$OUTPUTURL = "$ENV{'BBSERVERWWWURL'}/weathermap";
 	$OVERLIBJSURL = "$ENV{'BBSERVERWWWURL'}/weathermap/overlib_mini.js";
 } else {
 	$OUTPUT = "weathermap.png";
 	$HTMLOUTPUT = "";
-	$OUTPUTDIR="";
 	$OVERLIBJSURL = "overlib_mini.js";
 }
 
@@ -303,18 +302,20 @@ $HEIGHT= $HEIGHT * $SCALE;
 $FONTSIZE = $FONTSIZE * $SCALE;
 
 my @maps;
+if (@mapsasked eq 0) { @mapsasked = @defaultmaps;}
 foreach (@mapsasked) {
 	if (-d $_) {
-		print "Adding all maps in directory $_\n" if $ENV{'DEBUG'};
+		print "Adding all maps in directory $_\n" if $DEBUG;
 		find(sub {push @maps, $File::Find::name if /\.conf$/},$_);
 	} elsif (-f $_) {
-		print "Adding map $_\n" if $ENV{'DEBUG'};
+		print "Adding map $_\n" if $DEBUG;
 		push @maps,$_;
 	}
 }
 
 if (@maps gt 1 && (! -d $HTMLOUTPUT || ! -d $OUTPUT)) {
 	print "Multiple maps requires output and htmloutput to be directories\n";
+	print "I have the following maps: @maps\n";
 	exit 1;
 }
 
@@ -322,8 +323,8 @@ if (-d $HTMLOUTPUT) {
 	$makeindex = 1;
 	$HTMLOUTPUTDIR=$HTMLOUTPUT;
 	$OUTPUTDIR=$OUTPUT;
-	print "Writing map index to $HTMLOUTPUT/index.html\n" if $ENV{'DEBUG'};
-	open(HTMLINDEX,"|$BBWEBPAGE --color=green > $HTMLOUTPUT/index.html") ||die("$HTMLOUTPUT: $!\n");
+	print "Writing map index to $HTMLOUTPUTDIR/index.html.$$\n" if $DEBUG;
+	open(HTMLINDEX,"|$BBWEBPAGE --color=green > $HTMLOUTPUTDIR/index.html.$$") ||die("$HTMLOUTPUT: $!\n");
 	print HTMLINDEX '<table border=0>' . "\n";
 }
 
@@ -335,13 +336,14 @@ foreach (@maps) {
 	$name =~ s/.conf$//g;
 	if (@maps gt 1) {
 		$OUTPUT = "$OUTPUTDIR/${name}.png";
+		$OUTPUTURI = "${name}.png";
 		$HTMLOUTPUT = "$HTMLOUTPUTDIR/${name}.html";
 	}
 	print "Generating map for $_ in $OUTPUT with $HTMLOUTPUT\n" if $DEBUG;
 	generate($_);
 	print "Finished generating map for $_\n" if $DEBUG;
 	if($makeindex){
-		print "Adding link ${name}.html with image ${name}.png to index column $colnum\n" if $ENV{'DEBUG'};
+		print "Adding link ${name}.html with image ${name}.png to index column $colnum\n" if $DEBUG;
 		if ($colnum eq 1) {print HTMLINDEX "<tr>\n";}
 		print HTMLINDEX "<td><a href=\"${name}.html\"><img src=\"${name}.png\" width=\"100%\" height=\"100%\" border=\"0\"></a></td>\n";
 		if ($colnum eq 0) {print HTMLINDEX "</tr>\n";}
@@ -349,9 +351,11 @@ foreach (@maps) {
 	$mapnum = $mapnum+1;
 }
 
-if (-d $HTMLOUTPUT) {
+if ($makeindex eq 1) {
+	print "Closing index\n" if ($DEBUG);
 	print HTMLINDEX '</table>' . '\n';
 	close HTMLINDEX;
+	rename("$HTMLOUTPUTDIR/index.html.$$","$HTMLOUTPUTDIR/index.html") or warn "Renaming $HTMLOUTPUTDIR/index.html.$$ to $HTMLOUTPUTDIR/index.html failed: $!";
 }
 
 exit;
@@ -372,22 +376,22 @@ if($background){
 	$map->transparent($bg);
 	close PNG;
 } else {
-	print "Starting new image with dimensions $WIDTH x $HEIGHT\n" if $ENV{'DEBUG'};
+	print "Starting new image with dimensions $WIDTH x $HEIGHT\n" if $DEBUG;
 	$map=new GD::Image($WIDTH,$HEIGHT,1);
-	#print "Setting background with @{$colorspec{'BG'}} colors\n" if $ENV{'DEBUG'};
+	#print "Setting background with @{$colorspec{'BG'}} colors\n" if $DEBUG;
 	if (@{$colorspec{'BG'}} eq 3) {
-	print "Setting background with 3 colors in @{$colorspec{'BG'}}\n" if $ENV{'DEBUG'};
+	print "Setting background with 3 colors in @{$colorspec{'BG'}}\n" if $DEBUG;
 		$bg = $map->colorAllocate(@{$colorspec{'BG'}});
 		$map->transparent($bg);
 		$map->filledRectangle(0,0,$WIDTH,$HEIGHT,$bg);
 	} elsif (@{$colorspec{'BG'}} eq 4) {
-	print "Setting background with 4 colors in @{$colorspec{'BG'}}\n" if $ENV{'DEBUG'};
+	print "Setting background with 4 colors in @{$colorspec{'BG'}}\n" if $DEBUG;
 		$bg = $map->colorAllocateAlpha(@{$colorspec{'BG'}});
 		$map->transparent($bg);
 		$map->filledRectangle(0,0,$WIDTH,$HEIGHT,$bg);
 		$map->alphaBlending(1);
 	}
-	$map->interlaced('true');
+	#$map->interlaced('true');
 	#$map->saveAlpha(1);
 }
 
@@ -586,7 +590,7 @@ foreach (sort keys %nodes) {
 
 # print image...
 print "Generating image file $OUTPUT...\n\n" if($DEBUG);
-open(IMG,">$OUTPUT")||die("$OUTPUT: $!\n");
+open(IMG,">${OUTPUT}.$$")||die("$OUTPUT: $!\n");
 binmode(IMG); # for Windows systems
 if ($OUTPUT =~ /\.png$/) {
 	print IMG $map->png(0);
@@ -602,7 +606,7 @@ if($HTMLOUTPUT ne "")
 {
 	print "Generating HTML file $HTMLOUTPUT...\n\n" if($DEBUG);
 	#open(HTML,">$HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
-	open(HTML,"|$BBWEBPAGE --color=green > $HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
+	open(HTML,"|$BBWEBPAGE --color=green > ${HTMLOUTPUT}.$$") ||die("$HTMLOUTPUT: $!\n");
 
 	#print HTML '<HTML><HEAD><META HTTP-EQUIV="REFRESH" CONTENT="300" /><TITLE>Network Weathermap</TITLE></HEAD><BODY>';
 
@@ -616,7 +620,7 @@ if($HTMLOUTPUT ne "")
 
 	#$imageuri = $optctl{'image-uri'} || $OUTPUT;
 	#$imageuri = "$OUTPUTURL/${name}.png";
-	$imageuri = $optctl{'image-uri'} || "${name}.png";
+	$imageuri = $optctl{'image-uri'} || $OUTPUTURI;
 
 	print HTML sprintf('<CENTER><IMG SRC="%s" WIDTH="%s" HEIGHT="%s" ALIGN=center BORDER=0 USEMAP="#weathermap_imap" /></CENTER>', $imageuri, $width, $height);
 	print HTML '<MAP NAME="weathermap_imap">';
@@ -627,6 +631,12 @@ if($HTMLOUTPUT ne "")
 
 	close(HTML);
 }
+if ($IMGCOMPRESS ne '') {
+	print "Compressing $OUTPUT.$$ using command $IMGCOMPRESS\n" if ($DEBUG);
+	system("$IMGCOMPRESS ${OUTPUT}.$$ >/dev/null 2>/dev/null");
+}
+rename("${OUTPUT}.$$","${OUTPUT}");
+rename("${HTMLOUTPUT}.$$","${HTMLOUTPUT}");
 
 # hint, resizing the image could make it look better
 } # generate
@@ -663,7 +673,7 @@ sub label{
 			$fontfile = $font{'fontfile'};
 			$fontsize = $font{'fontsize'};
 		} else {
-			print "ERROR: font $font{'type'} defined but not gdfont or ttf\n" if $ENV{'DEBUG'};
+			print "ERROR: font $font{'type'} defined but not gdfont or ttf\n" if $DEBUG;
 		}
 	} else {
 		$fonttype = 'gd';
@@ -675,34 +685,34 @@ sub label{
 		($strheight)=$gdfont->height;
 		@coords = ($xpos-$strwidth/2-$pad-2, $ypos-$strheight/2-$pad+1,
 		$xpos+$strwidth/2+$pad+1, $ypos+$strheight/2+$pad);
-		print "label background should be at COORDS @coords\n" if $ENV{'DEBUG'};
+		print "label background should be at COORDS @coords\n" if $DEBUG;
 	} elsif ($fonttype eq 'ttf') {
 
 	my @coords1 = GD::Image->stringFT($black,$fontfile,$fontsize,0,
 		0, 0,
 		$label,{ resolution=>'72,72'});
-	print "String has COORDS @coords1\n" if $ENV{'DEBUG'};
+	print "String has COORDS @coords1\n" if $DEBUG;
 	@coords = ($xpos-(($coords1[4]-$coords1[0])/2)-$pad,$ypos+(($coords1[5]-$coords1[1])/2)-$pad,$xpos+(($coords1[4]-$coords1[0])/2)+$pad,$ypos-(($coords1[5]-$coords1[1])/2)+$pad);
-	print "Drawing label background at COORDS @coords\n" if $ENV{'DEBUG'};
+	print "Drawing label background at COORDS @coords\n" if $DEBUG;
 	} else {
-		print "ERROR: $fonttype not ttf or gdfont\n" if $ENV{'DEBUG'};
+		print "ERROR: $fonttype not ttf or gdfont\n" if $DEBUG;
 	}
 
 	$tile = new GD::Image(1,1);
 	#$tilewhite = $tile->colorAllocateAlpha(255,255,255,15);
-	$tilecolor = $tile->colorAllocateAlpha(255,255,255,31);
 	if ($color eq "purple") {$tilecolor = $tile->colorAllocateAlpha(255,0,255,31);}
-	if ($color eq "yellow") {$tilecolor = $tile->colorAllocateAlpha(255,255,0,31);}
-	if ($color eq "blue") {$tilecolor = $tile->colorAllocateAlpha(0,0,255,31);}
-	if ($color eq "green") {$tilecolor = $tile->colorAllocateAlpha(0,255,0,31);}
-	if ($color eq "orange") {$tilecolor = $tile->colorAllocateAlpha(255,127,0,31);}
-	if ($color eq "red") {$tilecolor = $tile->colorAllocateAlpha(255,0,0,31);}
+	elsif ($color eq "yellow") {$tilecolor = $tile->colorAllocateAlpha(255,255,0,31);}
+	elsif ($color eq "blue") {$tilecolor = $tile->colorAllocateAlpha(0,0,255,31);}
+	elsif ($color eq "green") {$tilecolor = $tile->colorAllocateAlpha(0,255,0,31);}
+	elsif ($color eq "orange") {$tilecolor = $tile->colorAllocateAlpha(255,127,0,31);}
+	elsif ($color eq "red") {$tilecolor = $tile->colorAllocateAlpha(255,0,0,31);}
+	else {$tilecolor = $tile->colorAllocateAlpha(255,255,255,31);}
 	#$tile->transparent($tilewhite);
 	$tile->fill(1,1,$tilecolor);
 	$map->setTile($tile);
 
 	#$map->filledRectangle(@coords,$white);
-	print "Drawing label background at COORDS @coords\n" if $ENV{'DEBUG'};
+	print "Drawing label background at COORDS @coords\n" if $DEBUG;
 	$map->filledRectangle(@coords,gdTiled);
 	#$map->rectangle(@coords,$black);
 
@@ -727,9 +737,9 @@ sub label{
 	{
 		$statustest = ($nodes{$nodename}{'statustest'} ne '') ? $nodes{$nodename}{'statustest'} : "conn";
 		print "Producing a Rectangle for $nodename with overlib graph for $statustest\n" if($DEBUG);
-		$overlibgraphurl = "${BBWEBHOST}${CGIBINURL}/hobbitgraph.sh?host=$nodename&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
+		$overlibgraphurl = "${CGIBINURL}/hobbitgraph.sh?host=$nodename&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
 		#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $nodename . "&SERVICE=trends";
-		$infourl = "${BBWEBHOST}${CGIBINURL}/bb-hostsvc.sh?HOST=${nodename}&SERVICE=$statustest";
+		$infourl = "${CGIBINURL}/bb-hostsvc.sh?HOST=${nodename}&SERVICE=$statustest";
 
 		my $active_html = make_html($nodename, $overlibgraphurl, $infourl);
 
@@ -751,12 +761,12 @@ sub icon {
 	my ($icon,@pos) = @_;
 	if ($SCALE != 1) {
 		if ($icon =~ m/^(\D+)-(\d+)\.png$/) {
-			print "Trying to scale $icon dimension $2\n" if $ENV{'DEBUG'};
+			print "Trying to scale $icon dimension $2\n" if $DEBUG;
 			$iconname=$1;
 			$iconsize=$2*$SCALE;
 			$icon = "$iconname-$iconsize.png";
 		} else {
-			print "Scaling requested, but icon $icon doesnt match NAME-SIZE.png\n" if $ENV{'DEBUG'};
+			print "Scaling requested, but icon $icon doesnt match NAME-SIZE.png\n" if $DEBUG;
 		}
 	}
 			
@@ -769,7 +779,7 @@ sub icon {
 			$iconimage->transparent($myblack);
 			@bounds = $iconimage->getBounds;
 			@location = ($pos[0]-($bounds[0]/2),$pos[1]-($bounds[1]/2));
-			print "ICON: placing $icon at @location\n" if $ENV{'DEBUG'};
+			print "ICON: placing $icon at @location\n" if $DEBUG;
 			#$map->alphaBlending(0);
 			$map->copyMerge($iconimage,@location,0,0,@bounds,75);
 			#$map->alphaBlending(1);
@@ -786,14 +796,14 @@ sub icon {
 sub annotation{
 	my @currentpos;
 	if (defined $pos{'TITLE'} && $title ne '') {
-		print "Writing TITLE $title with font $font{'TITLE'} of type $fontdef{$font{'TITLE'}}{'type'}\n" if $ENV{'DEBUG'};
+		print "Writing TITLE $title with font $font{'TITLE'} of type $fontdef{$font{'TITLE'}}{'type'}\n" if $DEBUG;
 		if ($fontdef{$font{'TITLE'}}{'type'} eq 'gd') {
 			$map->string(gdLargeFont,@{${pos}{'TITLE'}},$title,$color{'TITLE'});
 		} elsif ($fontdef{$font{'TITLE'}}{'type'} eq 'ttf') {
 			@coords = text_bounds($fontdef{$font{'TITLE'}},"$scale_low{$_}-$scale_high{$_}%");
-			print "TITLE POS OFFSET: @coords\n" if $ENV{'DEBUG'};
+			print "TITLE POS OFFSET: @coords\n" if $DEBUG;
 			my @fixedpos = (${pos}{'TITLE'}[0] - $coords[0],${pos}{'TITLE'}[1] - $coords[1]);
-			print "TITLE POS: Original loc: @{${pos}{'TITLE'}} (" . ${pos}{'TITLE'}[0] . "," . ${pos}{'TITLE'}[1] . "), moving by $coords[0],$coords[1], new pos: @fixedpos\n" if $ENV{'DEBUG'};
+			print "TITLE POS: Original loc: @{${pos}{'TITLE'}} (" . ${pos}{'TITLE'}[0] . "," . ${pos}{'TITLE'}[1] . "), moving by $coords[0],$coords[1], new pos: @fixedpos\n" if $DEBUG;
 			$map->stringFT($color{'TITLE'},$fontdef{$font{'TITLE'}}{'fontfile'},$fontdef{$font{'TITLE'}}{'fontsize'},0,
 			@fixedpos,
 			$title, { resolution=>'72,72'});
@@ -802,23 +812,23 @@ sub annotation{
 	my($title)= (defined $text{'KEY'}) ? $text{'KEY'} : "Traffic load";
 
 	$t=gmtime(time);
-	$map->string(gdSmallFont, @{${pos}{'TIME'}}, "Last update on $t UTC", $color{'KEYTEXT'});
+	$map->string(gdSmallFont, @{${pos}{'TIME'}}, "Last update on $t UTC", $color{'KEYTEXT'}) if (defined @{${pos}{'TIME'}});
 	my %keyfont = %{$fontdef{$font{'KEY'}}};
 	$pad = 5*$SCALE;
 	if ($keyfont{'type'} eq 'gd') {
 		($strwidth)=$keyfont{'gdfont'}->width;
 		($strheight)=$keyfont{'gdfont'}->height;
-		print "key text size $strwidth:$strheight\n" if $ENV{'DEBUG'};
+		print "key text size $strwidth:$strheight\n" if $DEBUG;
 		@coords = ($pos{'KEY'}[0],$pos{'KEY'}[1],
 		$pos{'KEY'}[0]+$strwidth*length($title)+2*$pad, $pos{'KEY'}[1]+$strheight*($scales+2));
-		print "key background should be at COORDS @coords\n" if $ENV{'DEBUG'};
+		print "key background should be at COORDS @coords\n" if $DEBUG;
 	} elsif ($fonttype eq 'ttf') {
 		my @coords1 = GD::Image->stringFT($black,$keyfont{'fontfile'},$keyfont{'fontsize'},0,
 		0, 0,
 		$title,{ resolution=>'72,72'});
 		@coords = ($pos{'KEY'}[0]+($coords1[6])-$pad,$pos{'KEY'}[1]+$coords1[7]-$pad,$pos{'KEY'}[0]+$coords1[2]+$pad,$pos{'KEY'}[1]+(($coords1[3]-$coords1[7])*($scales+1))+$pad);
 
-		print "Drawing key background for $scales scales with $pad padding at COORDS @coords\n" if $ENV{'DEBUG'};
+		print "Drawing key background for $scales scales with $pad padding at COORDS @coords\n" if $DEBUG;
 
 	}
 
@@ -843,7 +853,7 @@ sub annotation{
 			@coords[0]+4*$SCALE, @coords[1]+4*$SCALE+20,
 			$title, { resolution=>'72,72'});
 	} else {
-		print "ERROR: $fonttype not ttf or gdfont\n" if $ENV{'DEBUG'};
+		print "ERROR: $fonttype not ttf or gdfont\n" if $DEBUG;
 	}
 	@currentpos = (
 		$pos{'KEY'}[0],
@@ -912,7 +922,7 @@ sub alloc_colors {
 	$red=$map->colorAllocate(255,0,0);
 	#$keytextcolor_a = $map->colorAllocate(@keytextcolor);
 	foreach (sort keys %colorspec) {
-		print "Allocating @{$colorspec{$_}} for COLOR $_\n" if $ENV{'DEBUG'};
+		print "Allocating @{$colorspec{$_}} for COLOR $_\n" if $DEBUG;
 		if (@{$colorspec{$_}} eq 3) {
 			$color{$_} = $map->colorAllocate(@{$colorspec{$_}});
 		} elsif (@{$colorspec{$_}} eq 4) {
@@ -942,7 +952,7 @@ sub alloc_fonts {
 			$fontdef{$_}{'gdfont'} = $gdfont;
 			$fontdef{$_}{'type'} = 'gd';
 		}
-		print "FONT $_: Type: $fontdef{$_}{'type'},Size: $fontdef{$_}{'fontsize'}\n" if $ENV{'DEBUG'};
+		print "FONT $_: Type: $fontdef{$_}{'type'},Size: $fontdef{$_}{'fontsize'}\n" if $DEBUG;
 	}
 	#print Dumper(%fontdef);
 	#print "Font 1\n";
@@ -960,6 +970,12 @@ my($node,$link);
 print "\nReading configuration file $config\n\n" if($DEBUG);
 
 $scales=0;
+undef %scale_low;
+undef %scale_high;
+undef %scale_red;
+undef %scale_green;
+undef %scale_blue;
+
 $last_item = "";
 $title = '';
 open(CONF,$config) or die "$config: $!\n";
@@ -970,8 +986,9 @@ while(<CONF>){
 			print "found BACKGROUND: $background\n" if($DEBUG);
 		}
 	}
-	if(/^\s*OUTPUTFILE\s+(\S+)/i){
+	if(/^\s*OUTPUTFILE\s+(\S+)$/i){
 		$OUTPUT=$1;
+		$OUTPUTURI = $1;
 		if ($OUTPUT !~ /^\//) {$OUTPUT = "$OUTPUTDIR/$OUTPUT";}
 		print "found OUTPUTFILE: $OUTPUT\n" if($DEBUG);
 	}
@@ -1052,7 +1069,7 @@ while(<CONF>){
 		print "found LINK interfaces: $link $nodea: $1 $nodeb: $2\n" if($DEBUG);
 	}
 	if(/^\s*TARGET\s+(hobbit:)?([^\s:]+:)?(\S+)\s+(hobbit:)?([^\s:]+:)?(\S+)$/i && $last_item eq 'link'){
-		print "TARGET VALS: $1,$2,$3,$4,$5,$6\n" if $ENV{'DEBUG'};
+		print "TARGET VALS: $1,$2,$3,$4,$5,$6\n" if $DEBUG;
 		$links{$link}{'inta'} = $3;
 		$links{$link}{'intb'} = $6;
 		$testa = $2;
@@ -1070,7 +1087,7 @@ while(<CONF>){
 
 	if(/^\s*TARGET\s+(hobbit:)?(\S+)$/i && $last_item eq 'node'){
 		$nodes{$node}{'statustest'} = $2;
-		print "Found TARGET STATUS test for $node: $$nodes{$node}{'statustest'}\n" if $ENV{'DEBUG'};
+		print "Found TARGET STATUS test for $node: $$nodes{$node}{'statustest'}\n" if $DEBUG;
 	}
 	if(/^\s*VIA\s+(\d+)\s+(\d+)/i){
 		$links{$link}{'via'} = ([$1* $SCALE,$2 * $SCALE]);
@@ -1208,9 +1225,9 @@ sub draw_arrow {
 	} else {
 		$int =~ s/\//,/g;
 	}
-	print "GRAPH: Using test name $test,interface name $int\n" if $ENV{'DEBUG'};
+	print "GRAPH: Using test name $test,interface name $int\n" if $DEBUG;
 	#$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576&graph=hourly";
-	$hosturl = "${BBWEBHOST}${CGIBINURL}/hobbitgraph.sh?host=${node}&service=${test}:${int}&graph_height=120&graph_width=576";
+	$hosturl = "${CGIBINURL}/hobbitgraph.sh?host=${node}&service=${test}:${int}&graph_height=120&graph_width=576";
 	#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $node . "&SERVICE=trends";
 	$overlibgraphurl = $hosturl . "&graph=hourly";
 	$infourl = $hosturl . "&color=green&action=menu";
