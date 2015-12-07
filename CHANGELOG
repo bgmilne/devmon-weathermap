@@ -1,3 +1,10 @@
+v1.1.3: 24 Oct 2008 - Buchan Milne
+	Add ICON keyword for an image depicting the node
+	Add VIA keyword for links to allow one inflection point
+	Set the link color to red if the if_stat test shows it down
+	Set the background color for a node to the color of its conn test
+	Include link description in overlib caption
+
 v1.1.2: 09 Oct 2008 - Buchan Milne
 	Migrated to Hobbit/Devmon
 	Link utilisation (percentage) and description taken from hobbitdlog

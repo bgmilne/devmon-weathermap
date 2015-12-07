@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Network Weathermap for Devmon version 1.1.3 (20081023)
+# Derived from:
 # Network Wearthermap - version 1.1.1 (20040422)
 # http://netmon.grnet.gr/weathermap/
 # Panagiotis Christias, <christias@noc.ntua.gr>
@@ -10,7 +12,11 @@
 #			image => xxx.png,
 #			label => "Omicron",
 #			interfaces => (
-#				gi2/6 => [55, 65,"foo"],
+#				gi2/6 => )
+#					rates => [55, 65],
+#					desc => "foo",
+#					status => "green",
+#				),
 #				gi5/7 => [23, 45, "bar"],
 #			),
 #		eta => (),
@@ -23,7 +29,7 @@
 #				intb => Gi5/4,
 #			),
 
-$VERSION = "1.1.2";
+$VERSION = "1.1.3";
 
 use Getopt::Long;
 use GD;
@@ -49,6 +55,7 @@ $BBDISP = "localhost";
 $BBWEBHOST = "http://localhost";
 $BBWEBPAGE = "/usr/lib/hobbit/server/bin/bb-webpage";
 $CGIBINURL = "/hobbit-cgi";
+$ICONDIR="/etc/hobbit/";
 #$BBWEBHOSTURL = "http://localhost/hobbit"
 #
 ################################################################
@@ -109,6 +116,8 @@ if($background){
 	$white = $map->colorAllocate(255,255,255);
         $map->transparent($white);
         $map->interlaced('true');
+	$map->saveAlpha(1);
+	#$map->alphaBlending(0);
 }
 
 &alloc_colors;
@@ -116,12 +125,31 @@ if($background){
 print "Opening log files...\n\n" if($DEBUG);
 
 foreach $thisnode (keys %nodes) {
+	print "Checking node status for $thisnode\n" if ($DEBUG);
+	open(CONN, "$BB $BBDISP \"query $thisnode.conn\" |") or warn "$data: $!\n";
+	while (<CONN>) {
+		if (/^(\w+) /) {
+			$nodes{$thisnode}{'status'} = $1;
+			print "Node status: $nodes{$thisnode}{'status'}\n" if ($DEBUG);
+		}
+	}
+	close CONN;
 	print "Finding values for $thisnode\n" if ($DEBUG);
 	my @interfaces = keys %{$nodes{$thisnode}{'interfaces'}};
 		open(DEVMON, "$BB $BBDISP \"hobbitdlog $thisnode.if_load\" |") or warn "$data: $!\n";
 
 	while(<DEVMON>){
-		if (/<tr><td>(\S+) ?([^<]+)?<\/td><td>[^<]+<\/td><td>[^<]+\((\d+\.\d+)\%\)<\/td><td>[^<]+\((\d+\.\d+)\%\)(.+)$/) {
+		if (/^$thisnode\|if_load\|(\w+)\|/) {
+			$nodes{$thisnode}{'color'} = $1;
+			if ($nodes{$thisnode}{'status'} eq "red") {
+				$nodes{$thisnode}{'color'} = $nodes{$thisnode}{'status'};
+			}
+			# Dont make the device red for if_load being red
+			# we'll reserve that for conn
+			if ($1 eq "red") { $nodes{$thisnode}{'color'} = "orange";}
+			next;
+		}
+		elsif (/<tr><td>(\S+) ?([^<]+)?<\/td><td>[^<]+<\/td><td>[^<]+\((\d+\.\d+)\%\)<\/td><td>[^<]+\((\d+\.\d+)\%\)(.+)$/) {
 			my $intname = $1;
 			my $intdesc = $2;
 			my $inrate = $3;
@@ -130,11 +158,29 @@ foreach $thisnode (keys %nodes) {
 
 		#next if (grep {!/$intname/} @interfaces);
 		#print "Matched $intname, storing values\n" if ($DEBUG);
-		$nodes{$thisnode}{'interfaces'}{$intname} = [$inrate,$outrate,$intdesc];
+		$nodes{$thisnode}{'interfaces'}{$intname}{'rates'} = [$inrate,$outrate];
+		$nodes{$thisnode}{'interfaces'}{$intname}{'desc'} = $intdesc
 		#$nodes{$thisnode}{'interfaces'}{'label'} = $intdesc;
 		}
 	}
 	close(DEVMON);
+
+	print "Finding link status for $thisnode\n" if ($DEBUG);
+	my @interfaces = keys %{$nodes{$thisnode}{'interfaces'}};
+		open(DEVMON, "$BB $BBDISP \"hobbitdlog $thisnode.if_stat\" |") or warn "$data: $!\n";
+
+	while(<DEVMON>){
+		if (/<tr><td>(\S+) ?([^<]+)?<\/td><td>(\d+\.\d+)[^<]*<\/td><td>&(\w+) [^<]*.*$/) {
+			#my $intname = $1;
+			#my $intdesc = $2;
+			#my $speed = $3;
+			#my $status = $4;
+			$nodes{$thisnode}{'interfaces'}{$intname}{'status'} = $4
+		#next if (grep {!/$intname/} @interfaces);
+		}
+	}
+	close(DEVMON);
+
 }
 
 print "\nCalculating rates...\n\n" if($DEBUG);
@@ -153,8 +199,8 @@ foreach $link (keys %links) {
 
 	#@link1 = @{$nodes{$links{$link}{'nodea'}}{$links{$link}{'inta'}}};
 	#@link2 = @{$nodes{$links{$link}{'nodeb'}}{$links{$link}{'intb'}}};
-	@link1 = @{$nodes{$node1}{'interfaces'}{$int1}};
-	@link2 = @{$nodes{$node2}{'interfaces'}{$int2}};
+	@link1 = @{$nodes{$node1}{'interfaces'}{$int1}{'rates'}};
+	@link2 = @{$nodes{$node2}{'interfaces'}{$int2}{'rates'}};
 	@posa = @{$nodes{$node1}{'pos'}};
 	@posb = @{$nodes{$node2}{'pos'}};
 	print "In values: $link1[0] == $link2[1], Out values: $link1[1] == $link2[0]\n" if ($DEBUG);
@@ -164,6 +210,15 @@ foreach $link (keys %links) {
 	if($output{$link} != 0 && $outrate == 0) { $outrate=1 }
 	if($input{$link} != 0 && $inrate == 0) { $inrate=1 }
 
+	my $incolor = &select_color($inrate);
+	if ($nodes{$node1}{'interfaces'}{$int1}{'status'} eq "red") {
+		$outcolor = $red;
+	}
+	my $outcolor = &select_color($outrate);
+	if ($nodes{$node2}{'interfaces'}{$int2}{'status'} eq "red") {
+		$incolor = $red;
+	}
+
 	#print "$target{$link}: outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
 	print "$link from $posa[0],$posa[1] to $posb[0],$posb[1] outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
 
@@ -172,18 +227,25 @@ foreach $link (keys %links) {
 	$width=7;
 	$width=$linkwidth{$link};
 
-	&draw_arrow(
-		$posa[0],
-		$posa[1],
-		&middle($posa[0],$posb[0]),
-		&middle($posa[1],$posb[1]),
-		$width, 1, &select_color($outrate));
+	if (defined $links{$link}{'via'}) {
+		@middle = @{$links{$link}{'via'}}
+	} else {
+		@middle[0] = &middle($posa[0],$posb[0]);
+		@middle[1] = &middle($posa[1],$posb[1]);
+	}
 
 	&draw_arrow(
 		$posa[0],
 		$posa[1],
-		&middle($posa[0],$posb[0]),
-		&middle($posa[1],$posb[1]),
+		$middle[0],
+		$middle[1],
+		$width, 1, $outcolor);
+
+	&draw_arrow(
+		$posa[0],
+		$posa[1],
+		$middle[0],
+		$middle[1],
 		$width, 0, $black,$link,0);
 
 	if($BWLABELS eq "percent")
@@ -200,33 +262,39 @@ foreach $link (keys %links) {
 
 	&label(&middle($posa[0],&middle($posa[0],$posb[0])),
 		&middle($posa[1],&middle($posa[1],$posb[1])),
-		$outrate . "%", 0,gdSmallFont,"");
+		$outrate . "%", 0,gdSmallFont,"","");
 
 
 	&draw_arrow(
 		$posb[0],
 		$posb[1],
-		&middle($posa[0],$posb[0]),
-		&middle($posa[1],$posb[1]),
-		$width, 1, &select_color($inrate));
+		$middle[0],
+		$middle[1],
+		$width, 1, $incolor);
 
 	&draw_arrow(
 		$posb[0],
 		$posb[1],
-		&middle($posa[0],$posb[0]),
-		&middle($posa[1],$posb[1]),
+		$middle[0],
+		$middle[1],
 		$width, 0, $black,$link,1);
 
 
-	&label(&middle($posb[0],&middle($posa[0],$posb[0])),
-		&middle($posb[1],&middle($posa[1],$posb[1])),
-		$inrate . "%", 0, gdSmallFont,"");
+	&label(&middle($posb[0],$middle[0]),
+		&middle($posb[1],$middle[1]),
+		$inrate . "%", 0, gdSmallFont,"","");
 
 }
 print "\n" if($DEBUG);
 
 foreach (keys %nodes) {
-	&label($nodes{$_}{'pos'}[0],$nodes{$_}{'pos'}[1],$nodes{$_}{'label'},3,gdLargeFont,$_);}
+	if (defined $nodes{$_}{'icon'}) {
+		&icon($nodes{$_}{'icon'},@{$nodes{$_}{'pos'}})
+	}
+	&label($nodes{$_}{'pos'}[0],$nodes{$_}{'pos'}[1],$nodes{$_}{'label'},3,gdTinyFont,$_,$nodes{$_}{'color'});
+	#$map->alphaBlending(1);
+	#$map->alphaBlending(0);
+}
 
 &annotation;
 #&timestamp;
@@ -284,7 +352,7 @@ sub timestamp
 
 # print labels
 sub label{
-	my($xpos,$ypos,$label,$pad,$font,$nodename)=@_;
+	my($xpos,$ypos,$label,$pad,$font,$nodename,$color)=@_;
 
 	if(!defined($font))
 	{
@@ -297,9 +365,22 @@ sub label{
 	my @coords = ($xpos-$strwidth/2-$pad-2, $ypos-$strheight/2-$pad+1,
 		$xpos+$strwidth/2+$pad+1, $ypos+$strheight/2+$pad);
 
+	$tile = new GD::Image(1,1);
+	#$tilewhite = $tile->colorAllocateAlpha(255,255,255,15);
+	$tilecolor = $tile->colorAllocateAlpha(255,255,255,31);
+	if ($color eq "purple") {$tilecolor = $tile->colorAllocateAlpha(255,0,255,31);}
+	if ($color eq "yellow") {$tilecolor = $tile->colorAllocateAlpha(255,255,0,31);}
+	if ($color eq "blue") {$tilecolor = $tile->colorAllocateAlpha(0,0,255,31);}
+	if ($color eq "green") {$tilecolor = $tile->colorAllocateAlpha(0,255,0,31);}
+	if ($color eq "orange") {$tilecolor = $tile->colorAllocateAlpha(255,127,0,31);}
+	if ($color eq "red") {$tilecolor = $tile->colorAllocateAlpha(255,0,0,31);}
+	#$tile->transparent($tilewhite);
+	$tile->fill(1,1,$tilecolor);
+	$map->setTile($tile);
 
-	$map->filledRectangle(@coords,$white);
-	$map->rectangle(@coords,$black);
+	#$map->filledRectangle(@coords,$white);
+	$map->filledRectangle(@coords,gdTiled);
+	#$map->rectangle(@coords,$black);
 	$map->string($font,
 		$xpos-$strwidth/2, $ypos-$strheight/2+1,
 		$label, $black);
@@ -324,6 +405,21 @@ sub label{
 			# to the arrows already there from when the links were drawn
 			$allmap = $html.$allmap;
 		}
+	}
+}
+
+sub icon {
+	my ($icon,@pos) = @_;
+	$iconfile = $ICONDIR . $icon;
+	print "Trying to merge in $iconfile\n" if ($DEBUG);
+	if ($iconimage = GD::Image->newFromPng($iconfile,1)) {
+		$mywhite = $iconimage->colorAllocate(255,255,255);
+		$iconimage->transparent($mywhite);
+		@bounds = $iconimage->getBounds;
+		@location = ($pos[0]-($bounds[0]/2),$pos[1]-($bounds[1]/2));
+		#$map->alphaBlending(0);
+		$map->copyMerge($iconimage,@location,0,0,@bounds,75);
+		#$map->alphaBlending(1);
 	}
 }
 
@@ -383,6 +479,7 @@ sub alloc_colors {
 	$gray=$map->colorAllocate(248,248,248);
 	$black=$map->colorAllocate(0,0,0);
 	$darkgray=$map->colorAllocate(128,128,128);
+	$red=$map->colorAllocate(0,0,0);
 
 	foreach(keys %scale_red){
 		$color{$_} = $map->colorAllocate($scale_red{$_},$scale_green{$_},$scale_blue{$_});
@@ -449,6 +546,10 @@ while(<CONF>){
 		$nodes{$node}{'label'} = $1;
 		print "found NODE: $node LABEL: $label{$node}\n" if($DEBUG);
 	}
+	if(/^\s*ICON\s+(\S+)/i){
+		$nodes{$node}{'icon'} = $1;
+		print "found NODE: $node ICON: $nodes{$node}{'icon'}\n" if($DEBUG);
+	}
 
 	if(/^\s*LINK\s+(\S+)/i){
 		$link=$1;
@@ -469,6 +570,10 @@ while(<CONF>){
 		$nodes{$nodea}{'interfaces'}{$1}=undef;
 		$nodes{$nodeb}{'interfaces'}{$2}=undef;
 		print "found LINK interfaces: $link $nodea: $1 $nodeb: $2\n" if($DEBUG);
+	}
+	if(/^\s*VIA\s+(\d+)\s+(\d+)/i){
+		$links{$link}{'via'} = ([$1,$2]);
+		print "found LINK VIA: $link $2\n" if($DEBUG);
 	}
 
 	if(/^\s*TARGET\s+(\S+)/i){
@@ -545,11 +650,11 @@ sub draw_arrow {
 	if ($side eq 0 ) {
 	        $node = $links{$linkname}{'nodea'};
 	        $int = $links{$linkname}{'inta'};
-		$desc = $node . ":" . $int . " - " . $nodes{$node1}{'interfaces'}{$int1}[2];
+		$desc = $node . ":" . $int . " - " . $nodes{$node1}{'interfaces'}{$int1}{'desc'};
 	} elsif ($side eq 1) {
 	        $node = $links{$linkname}{'nodeb'};
 	        $int = $links{$linkname}{'intb'};
-		$desc = $node . ":" . $int . " - " . $nodes{$node2}{'interfaces'}{$int2}[2];
+		$desc = $node . ":" . $int . " - " . $nodes{$node2}{'interfaces'}{$int2}{'desc'};
 	}
 	$int =~ s/\//_/g;
 	#$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576&graph=hourly";
