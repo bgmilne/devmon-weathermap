@@ -398,12 +398,13 @@ if($background){
 &alloc_colors;
 &alloc_fonts;
 
-print "Quering hobbit...\n\n" if($DEBUG);
+print "Querying hobbit...\n\n" if($DEBUG);
 
 foreach $thisnode (sort keys %nodes) {
+	my $hostname = $nodes{$thisnode}{'hostname'} ? $nodes{$thisnode}{'hostname'} : $thisnode;
 	my $statustest = ($nodes{$thisnode}{'statustest'} ne '') ? $nodes{$thisnode}{'statustest'} : "conn";
-	print "Checking node status for $thisnode with test $statustest\n" if ($DEBUG);
-	open(CONN, "$BB $BBDISP \"query $thisnode.$statustest\" |") or warn "$data: $!\n";
+	print "Checking node status for $thisnode ($hostname) with test $statustest on $BBDISP\n" if ($DEBUG);
+	open(CONN, "$BB $BBDISP \"query $hostname.$statustest\" |") or print "data: $!\n";
 	while (<CONN>) {
 		if (/^(\w+) /) {
 			$nodes{$thisnode}{'status'} = $1;
@@ -414,12 +415,12 @@ foreach $thisnode (sort keys %nodes) {
 	close CONN;
 	print "Finding values for $thisnode\n" if ($DEBUG);
 	foreach my $logtest (sort keys %{$nodes{$thisnode}{'targets'}}) {
-		print "Finding values for $thisnode test $logtest\n" if ($DEBUG);
+		print "Finding values for $thisnode ($hostname) test $logtest\n" if ($DEBUG);
 		my @interfaces = keys %{$nodes{$thisnode}{'targets'}{$logtest}};
-		open(DEVMON, "$BB $BBDISP \"hobbitdlog $thisnode.$logtest\" |") or warn "$data: $!\n";
+		open(DEVMON, "$BB $BBDISP \"hobbitdlog $hostname.$logtest\" |") or print "data: $!\n";
 
 		while(<DEVMON>){
-			if (/^$thisnode\|if_load\|(\w+)\|/) {
+			if (/^$hostname\|if_load\|(\w+)\|/) {
 				#$nodes{$thisnode}{'color'} = $1;
 				#if ($nodes{$thisnode}{'status'} eq "red") {
 				#	$nodes{$thisnode}{'color'} = $nodes{$thisnode}{'status'};
@@ -446,18 +447,18 @@ foreach $thisnode (sort keys %nodes) {
 	}
 	close(DEVMON);
 
-	print "Finding link status for $thisnode\n" if ($DEBUG);
+	print "Finding link status for $thisnode ($hostname)\n" if ($DEBUG);
 	my @interfaces = keys %{$nodes{$thisnode}{'if_load'}{'targets'}};
-		open(DEVMON, "$BB $BBDISP \"hobbitdlog $thisnode.if_stat\" |") or warn "$data: $!\n";
+		open(DEVMON, "$BB $BBDISP \"hobbitdlog $hostname.if_stat\" |") or warn "data: $!\n";
 
 	while(<DEVMON>){
-		if (/<tr><td>(\S+) ?([^<]+)?<\/td><td>(\d+\.\d+)[^<]*<\/td><td>&(\w+) [^<]*.*$/) {
+		if (/<tr><td>(\S+) ?([^<]+)?<\/td><td>(\d+\.?\d*)[^<]*<\/td><td>&(\w+) [^<]*.*$/) {
 			#my $intname = $1;
 			#my $intdesc = $2;
 			#my $speed = $3;
 			#my $status = $4;
 			$nodes{$thisnode}{'if_load'}{'targets'}{$1}{'status'} = $4;
-			print "Node status: $thisnode - $1: $nodes{$thisnode}{'if_load'}{'targets'}{$1}{'status'}\n" if ($DEBUG);
+			print "Link status: $thisnode - $1: $nodes{$thisnode}{'if_load'}{'targets'}{$1}{'status'}\n" if ($DEBUG);
 		#next if (grep {!/$intname/} @interfaces);
 		}
 	}
@@ -735,11 +736,12 @@ sub label{
 	# produce some imagemap data if that's required
 	if($nodename ne "")
 	{
+		my $hostname = $nodes{$nodename}{'hostname'} ? $nodes{$nodename}{'hostname'} : $nodename;
 		$statustest = ($nodes{$nodename}{'statustest'} ne '') ? $nodes{$nodename}{'statustest'} : "conn";
-		print "Producing a Rectangle for $nodename with overlib graph for $statustest\n" if($DEBUG);
-		$overlibgraphurl = "${CGIBINURL}/hobbitgraph.sh?host=$nodename&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
+		print "Producing a Rectangle for $nodename ($hostname) with overlib graph for $statustest\n" if($DEBUG);
+		$overlibgraphurl = "${CGIBINURL}/hobbitgraph.sh?host=$hostname&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
 		#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $nodename . "&SERVICE=trends";
-		$infourl = "${CGIBINURL}/bb-hostsvc.sh?HOST=${nodename}&SERVICE=$statustest";
+		$infourl = "${CGIBINURL}/bb-hostsvc.sh?HOST=${hostname}&SERVICE=$statustest";
 
 		my $active_html = make_html($nodename, $overlibgraphurl, $infourl);
 
@@ -1028,6 +1030,10 @@ while(<CONF>){
 		$last_item = "node";
 		print "found NODE: $node\n" if($DEBUG);
 	}
+	if(/^\s*HOSTNAME\s+(\S+.*)$/i){
+		$nodes{$node}{'hostname'} = $1;
+		print "found NODE: $node HOSTNAME: $hostname{$node}\n" if($DEBUG);
+	}
 	if(/^\s*POSITION\s+(\d+)\s+(\d+)/i){
 		$xpos{$node}=$1 * $SCALE;
 		$ypos{$node}=$2 * $SCALE;
@@ -1208,16 +1214,19 @@ sub make_html {
 sub draw_arrow {
 	my($x1,$y1,$x2,$y2,$w,$solid,$color,$linkname,$side)=($_[0],$_[1],$_[2],$_[3],$_[4],$_[5],$_[6],$_[7],$_[8]);
 	my $test;
+	my $hostname;
 	if ($side eq 0 ) {
 	        $node = $links{$linkname}{'nodea'};
+		$hostname = $nodes{$node}{'hostname'} ? $nodes{$node}{'hostname'} : $node;
 	        $int = $links{$linkname}{'inta'};
 	        $test = $links{$linkname}{'testa'};
-		$desc = $node . ":" . $int . " - " . $nodes{$node1}{$test}{'targets'}{$int1}{'desc'};
+		$desc = $hostname . ":" . $int . " - " . $nodes{$node1}{$test}{'targets'}{$int1}{'desc'};
 	} elsif ($side eq 1) {
 	        $node = $links{$linkname}{'nodeb'};
+		$hostname = $nodes{$node}{'hostname'} ? $nodes{$node}{'hostname'} : $node;
 	        $int = $links{$linkname}{'intb'};
 	        $test = $links{$linkname}{'testb'};
-		$desc = $node . ":" . $int . " - " . $nodes{$node2}{$test}{'targets'}{$int2}{'desc'};
+		$desc = $hostname . ":" . $int . " - " . $nodes{$node2}{$test}{'targets'}{$int2}{'desc'};
 	}
 	if ($test =~ /if_/) {
 		$int .= "." if $int =~ /\/\d*$/;
@@ -1225,9 +1234,9 @@ sub draw_arrow {
 	} else {
 		$int =~ s/\//,/g;
 	}
-	print "GRAPH: Using test name $test,interface name $int\n" if $DEBUG;
+	print "GRAPH: Using test name $test,interface name $int from node $node ($hostname)\n" if $DEBUG;
 	#$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576&graph=hourly";
-	$hosturl = "${CGIBINURL}/hobbitgraph.sh?host=${node}&service=${test}:${int}&graph_height=120&graph_width=576";
+	$hosturl = "${CGIBINURL}/hobbitgraph.sh?host=${hostname}&service=${test}:.${int}&graph_height=120&graph_width=576&first=1&count=1";
 	#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $node . "&SERVICE=trends";
 	$overlibgraphurl = $hosturl . "&graph=hourly";
 	$infourl = $hosturl . "&color=green&action=menu";
