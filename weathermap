@@ -302,6 +302,9 @@ $HEIGHT= $HEIGHT * $SCALE;
 $FONTSIZE = $FONTSIZE * $SCALE;
 
 my @maps;
+my $worstcolor;
+my $worstindexcolor = 'green';
+my $htmlindexcontent;
 if (@mapsasked eq 0) { @mapsasked = @defaultmaps;}
 foreach (@mapsasked) {
 	if (-d $_) {
@@ -323,9 +326,7 @@ if (-d $HTMLOUTPUT) {
 	$makeindex = 1;
 	$HTMLOUTPUTDIR=$HTMLOUTPUT;
 	$OUTPUTDIR=$OUTPUT;
-	print "Writing map index to $HTMLOUTPUTDIR/index.html.$$\n" if $DEBUG;
-	open(HTMLINDEX,"|$BBWEBPAGE --color=green > $HTMLOUTPUTDIR/index.html.$$") ||die("$HTMLOUTPUT: $!\n");
-	print HTMLINDEX '<table border=0>' . "\n";
+	$htmlindexcontent .= '<table border=0>' . "\n";
 }
 
 my $mapnum = 1;
@@ -344,16 +345,19 @@ foreach (@maps) {
 	print "Finished generating map for $_\n" if $DEBUG;
 	if($makeindex){
 		print "Adding link ${name}.html with image ${name}.png to index column $colnum\n" if $DEBUG;
-		if ($colnum eq 1) {print HTMLINDEX "<tr>\n";}
-		print HTMLINDEX "<td><a href=\"${name}.html\"><img src=\"${name}.png\" width=\"100%\" height=\"100%\" border=\"0\"></a></td>\n";
-		if ($colnum eq 0) {print HTMLINDEX "</tr>\n";}
+		if ($colnum eq 1) {$htmlindexcontent .= "<tr>\n";}
+		$htmlindexcontent .=  "<td><a href=\"${name}.html\"><img src=\"${name}.png\" width=\"100%\" height=\"100%\" border=\"0\"></a></td>\n";
+		if ($colnum eq 0) {$htmlindexcontent .= "</tr>\n";}
 	}
 	$mapnum = $mapnum+1;
 }
 
 if ($makeindex eq 1) {
+	$htmlindexcontent .= '</table>' . "\n";
+	print "Writing map index with color $worstindexcolor to $HTMLOUTPUTDIR/index.html.$$\n" if $DEBUG;
+	open(HTMLINDEX,"|$BBWEBPAGE --color=$worstindexcolor > $HTMLOUTPUTDIR/index.html.$$") or die "$HTMLOUTPUT: $!\n";
+	print HTMLINDEX $htmlindexcontent;
 	print "Closing index\n" if ($DEBUG);
-	print HTMLINDEX '</table>' . '\n';
 	close HTMLINDEX;
 	rename("$HTMLOUTPUTDIR/index.html.$$","$HTMLOUTPUTDIR/index.html") or warn "Renaming $HTMLOUTPUTDIR/index.html.$$ to $HTMLOUTPUTDIR/index.html failed: $!";
 }
@@ -368,6 +372,7 @@ sub generate
 	&read_config($CONFIG);
 	$allmap = '';
 	print Dumper(%nodes) if ($DEBUG);
+	$worstcolor = 'green';
 
 if($background){
 	open (PNG,"$background") || die "$background: $!\n";
@@ -409,6 +414,7 @@ foreach $thisnode (sort keys %nodes) {
 		if (/^(\w+) /) {
 			$nodes{$thisnode}{'status'} = $1;
 			$nodes{$thisnode}{'color'} = $1;
+			worst_color($1);
 			print "Node status: $thisnode: $nodes{$thisnode}{'status'}\n" if ($DEBUG);
 		}
 	}
@@ -511,11 +517,13 @@ foreach $link (sort keys %links) {
 	if ($nodes{$node1}{$test1}{'targets'}{$int1}{'status'} eq "red") {
 		$outcolor = $red;
 		$outlabel = "Link down";
+		worst_color('red');
 	}
 	my $incolor = &select_color($inrate);
 	if ($nodes{$node2}{$test2}{'targets'}{$int2}{'status'} eq "red") {
 		$incolor = $red;
 		$inlabel = "Link down";
+		worst_color('red');
 	}
 
 	#print "$target{$link}: outrate=$outrate%, inrate=$inrate%\n" if($DEBUG);
@@ -602,12 +610,13 @@ if ($OUTPUT =~ /\.png$/) {
 } elsif ($OUTPUT =~ /\.jpe?g$/) {
 }
 close IMG;
+print "Image file $OUTPUT generated\n";
 
 if($HTMLOUTPUT ne "")
 {
-	print "Generating HTML file $HTMLOUTPUT...\n\n" if($DEBUG);
+	print "Generating HTML file $HTMLOUTPUT... with color $worstcolor\n";
 	#open(HTML,">$HTMLOUTPUT") ||die("$HTMLOUTPUT: $!\n");
-	open(HTML,"|$BBWEBPAGE --color=green > ${HTMLOUTPUT}.$$") ||die("$HTMLOUTPUT: $!\n");
+	open(HTML,"|$BBWEBPAGE --color=$worstcolor > ${HTMLOUTPUT}.$$") or { warn "$HTMLOUTPUT: $!\n" and return 0};
 
 	#print HTML '<HTML><HEAD><META HTTP-EQUIV="REFRESH" CONTENT="300" /><TITLE>Network Weathermap</TITLE></HEAD><BODY>';
 
@@ -1303,6 +1312,19 @@ sub draw_arrow {
 	}
 }
 
+sub worst_color {
+	my ($newcolor) = @_;
+	return 1 if $newcolor eq 'green';
+	print "New (current is $worstcolor, index $worstindexcolor) non-green color: $newcolor\n" if $DEBUG;
+	if ($worstcolor eq 'green') {
+		$worstcolor = $newcolor;
+		print "New worst color $newcolor\n" if $DEBUG;
+		$worstindexcolor = $worstcolor if $worstindexcolor eq 'green';
+	} elsif ($worstcolor eq 'yellow' and $newcolor eq 'red') {
+		$worstcolor = $newcolor;
+		$worstindexcolor = $worstcolor if ($worstindexcolor eq 'green' or $worstindexcolor eq 'yellow');
+	}
+};
 
 sub version {
         print <<EOM;
