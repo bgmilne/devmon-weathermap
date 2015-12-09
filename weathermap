@@ -219,6 +219,7 @@ my $BBDISP = "localhost";
 my $BBWEBHOST = "http://localhost";
 my $BBWEBPAGE = "/usr/lib64/xymon/server/bin/bb-webpage";
 my $CGIBINURL = "/xymon-cgi";
+my $GRAPHCGI = "hobbitgraph.sh";
 my $ICONDIR="/etc/xymon/weathermap/images";
 my $SCALE=1;
 #$TTFONT="/etc/hobbit/LiberationSans-Regular.ttf";
@@ -287,6 +288,12 @@ if ($ENV{'BBHOME'}) {
 } else {
 	$CONFIG = "weathermap.conf";
 	@defaultmaps = ("weathermap.conf");
+}
+if ($ENV{'XYMONHOME'}) {
+	#Xymon 4.3.x has xymonpage instead of bb-webpage
+	$BBWEBPAGE = "$ENV{'XYMONHOME'}/bin/xymonpage";
+	#Graph CGI was renamed:
+	$GRAPHCGI = "showgraph.sh";
 }
 if ($ENV{'BBWWW'}) {
 	$OUTPUT = "$ENV{'BBWWW'}/weathermap";
@@ -818,7 +825,7 @@ sub label{
 		my $hostname = $nodes{$nodename}{'hostname'} ? $nodes{$nodename}{'hostname'} : $nodename;
 		my $statustest = ($nodes{$nodename}{'statustest'} ne '') ? $nodes{$nodename}{'statustest'} : "conn";
 		print "Producing a Rectangle for $nodename ($hostname) with overlib graph for $statustest\n" if($DEBUG);
-		my $overlibgraphurl = "${CGIBINURL}/hobbitgraph.sh?host=$hostname&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
+		my $overlibgraphurl = "${CGIBINURL}/${GRAPHCGI}?host=$hostname&service=$statustest&graph_height=120&graph_width=576&graph=hourly";
 		#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $nodename . "&SERVICE=trends";
 		my $infourl = "${CGIBINURL}/bb-hostsvc.sh?HOST=${hostname}&SERVICE=$statustest";
 
@@ -1322,7 +1329,7 @@ sub draw_arrow {
 	}
 	print "GRAPH: Using test name $test,interface name $int from node $node ($hostname)\n" if $DEBUG;
 	#$overlibgraphurl = $BBWEBHOST . $CGIBINURL . "/hobbitgraph.sh?host=" . $node . "&service=if_load:" . $int . ".&graph_height=120&graph_width=576&graph=hourly";
-	my $hosturl = "${CGIBINURL}/hobbitgraph.sh?host=${hostname}&service=${test}:.${int}&graph_height=120&graph_width=576&first=1&count=1";
+	my $hosturl = "${CGIBINURL}/${GRAPHCGI}?host=${hostname}&service=${test}:.${int}&graph_height=120&graph_width=576&first=1&count=1";
 	#$infourl = $BBWEBHOST . $CGIBINURL . "/bb-hostsvc.sh?HOST=" . $node . "&SERVICE=trends";
 	my $overlibgraphurl = $hosturl . "&graph=hourly";
 	my $infourl = $hosturl . "&color=green&action=menu";
