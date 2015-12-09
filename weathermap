@@ -39,13 +39,14 @@ weathermap.pl - A Network Weathermap script for Hobbit/Xymon and Devmon
  -c, --config=FILE  configuration file or directory of configuration files
  -o, --output=FILE  output image file (or directory in the case of multiple maps)
                     to write to
- --htmloutput=FILE  enable HTML output to FILE, or a directory
- --image-uri=URI    use URI for the IMG tag when generating HTML
  -s, --scale=INT    Scale the entire map by an integer value (for large displays)
  -f, --font=FILE    Default TTF font to use (for FONTS 1-5 when scaled)
  -v, --version      print version
  -h, --help         print this text
  -d, --debug        enable debug output
+ --htmloutput=FILE  enable HTML output to FILE, or a directory
+ --image-uri=URI    use URI for the IMG tag when generating HTML
+ --icondir=DIR      Directory where node icons are to be found
 
 =head1 DESCRIPTION
 
@@ -218,7 +219,7 @@ my $BBDISP = "localhost";
 my $BBWEBHOST = "http://localhost";
 my $BBWEBPAGE = "/usr/lib64/xymon/server/bin/bb-webpage";
 my $CGIBINURL = "/xymon-cgi";
-my $ICONDIR="/etc/xymon/weathermap";
+my $ICONDIR="/etc/xymon/weathermap/images";
 my $SCALE=1;
 #$TTFONT="/etc/hobbit/LiberationSans-Regular.ttf";
 my $TTFONT="/usr/share/rrdtool/fonts/DejaVuSansMono-Roman.ttf";
@@ -281,7 +282,7 @@ if ($ENV{'BBHOME'}) {
 	$CONFIG = "$ENV{'BBHOME'}/etc/weathermap";
 	@defaultmaps = ("$ENV{'BBHOME'}/etc/weathermap");
 	$BBWEBPAGE = "$ENV{'BBHOME'}/bin/bb-webpage";
-	$ICONDIR = "$ENV{'BBHOME'}/etc/weathermap";
+	$ICONDIR = "$ENV{'BBHOME'}/etc/weathermap/images";
 	$TTFONT = "$ENV{'BBHOME'}/etc/LiberationMono-Regular.ttf";
 } else {
 	$CONFIG = "weathermap.conf";
@@ -314,7 +315,7 @@ if ($ENV{'CGIBINURL'}) {
 my %optctl=();
 #GetOptions(\%optctl, "config:s", "output:s", "version", "help", "debug", "") || exit(1);
 GetOptions(\%optctl, "image-uri:s", "config:s" => \@mapsasked, "output:s", "version", "help", "debug", "htmloutput:s",
-		 "scale:s","thumbnailscale:s", "ncols:s" , "font:s", "") || exit(1);
+		 "scale:s","thumbnailscale:s", "ncols:s" , "font:s", "icondir:s", "") || exit(1);
 
 #if($optctl{"config"}) { $CONFIG = $optctl{"config"} };
 
@@ -335,10 +336,10 @@ if($optctl{'thumbnailscale'}) {$indexscale=$optctl{'thumbnailscale'}};
 if($optctl{'ncols'}) {$ncols=$optctl{'ncols'}};
 
 if($optctl{'font'}) {$TTFONT=$optctl{'font'}};
+if($optctl{'icondir'}) {$ICONDIR=$optctl{'icondir'}};
 
 $WIDTH = $WIDTH * $SCALE;
 $HEIGHT= $HEIGHT * $SCALE;
-$FONTSIZE = $FONTSIZE * $SCALE;
 
 my @maps;
 my $worstcolor;
@@ -838,6 +839,7 @@ sub label{
 sub icon {
 	my ($icon,@pos) = @_;
 	my ($iconname,$iconsize,$iconfile,$iconimage);
+	$icon =~ s,.*/([^/]*)$,$1, if ($icon !~ /^\//);
 	if ($SCALE != 1) {
 		if ($icon =~ m/^(\D+)-(\d+)\.png$/) {
 			print "Trying to scale $icon dimension $2\n" if $DEBUG;
@@ -1412,11 +1414,14 @@ Usage: $0 [OPTION]...
 
  -c, --config=FILE  configuration file (default $CONFIG)
  -o, --output=FILE  output image file default (default $OUTPUT)
+ -s, --scale=INT    Scale the entire map by an integer value (for large displays)
+ -f, --font=FILE    Default TTF font to use (for FONTS 1-5 when scaled)
  -v, --version      print version
  -h, --help         print this text
  -d, --debug        enable debug output
  --htmloutput=FILE  enable HTML output to FILE
  --image-uri=URI    use URI for the IMG tag when generating HTML
+ --icondir=DIR      Directory where node icons are to be found
 
 EOM
 }
