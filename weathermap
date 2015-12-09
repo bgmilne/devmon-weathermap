@@ -1058,7 +1058,7 @@ sub read_config {
 my($config)=shift;
 my($node,$link);
 
-print "\nReading configuration file $config\n\n" if($DEBUG);
+print "\nReading configuration file $config\n";
 
 $scales=0;
 undef %scale_low;
@@ -1260,7 +1260,8 @@ while(<CONF>){
 		print "found SCALE DATA: $1:$2 $3:$4:$5\n" if($DEBUG);
 	}
 }
-print "\n" if($DEBUG);
+print "Finished reading config file $config\n";
+1;
 }
 
 
