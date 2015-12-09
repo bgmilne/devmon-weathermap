@@ -622,8 +622,9 @@ LINK: foreach my $link (sort keys %links) {
 		$width, 0, $black,$link,0);
 
 
-	&label(&middle($posa[0],&middle($posa[0],$posb[0])),
-		&middle($posa[1],&middle($posa[1],$posb[1])),
+	&label(
+		&middle($posa[0],$middle[0] + 0.1 * ($posb[0]-$posa[0])),
+		&middle($posa[1],$middle[1] + 0.1 * ($posb[1]-$posa[1])),
 		$outlabel, 0,$fontdef{2},"","");
 
 
@@ -642,8 +643,9 @@ LINK: foreach my $link (sort keys %links) {
 		$width, 0, $black,$link,1);
 
 
-	&label(&middle($posb[0],$middle[0]),
-		&middle($posb[1],$middle[1]),
+	&label(
+		&middle($posb[0],$middle[0] + 0.1 * ($posa[0]-$posb[0])),
+		&middle($posb[1],$middle[1] + 0.1 * ($posa[1]-$posb[1])),
 		$inlabel, 0, $fontdef{2},"","");
 
 }
