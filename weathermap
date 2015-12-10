@@ -280,7 +280,6 @@ if ($ENV{'BBHOME'}) {
 	$CONFIG = "$ENV{'BBHOME'}/etc/weathermap";
 	@defaultmaps = ("$ENV{'BBHOME'}/etc/weathermap");
 	$BBWEBPAGE = "$ENV{'BBHOME'}/bin/bb-webpage";
-	$ICONDIR = "$ENV{'BBHOME'}/etc/weathermap/images";
 	$TTFONT = "$ENV{'BBHOME'}/etc/LiberationMono-Regular.ttf";
 } else {
 	$CONFIG = "weathermap.conf";
@@ -297,6 +296,7 @@ if ($ENV{'BBWWW'}) {
 	$HTMLOUTPUT = "$ENV{BBWWW}/weathermap";
 	$OUTPUTURL = "$ENV{'BBSERVERWWWURL'}/weathermap";
 	$OVERLIBJSURL = "$ENV{'BBSERVERWWWURL'}/weathermap/overlib_mini.js";
+	$ICONDIR = "$ENV{'BBWWW'}/weathermap/images";
 } else {
 	$OUTPUT = "weathermap.png";
 	$HTMLOUTPUT = "";
