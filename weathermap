@@ -41,6 +41,7 @@ weathermap.pl - A Network Weathermap script for Hobbit/Xymon and Devmon
                     to write to
  -s, --scale=INT    Scale the entire map by an integer value (for large displays)
  -f, --font=FILE    Default TTF font to use (for FONTS 1-5 when scaled)
+ -t  --theme        Theme color to use (white|black, default white)
  -v, --version      print version
  -h, --help         print this text
  -d, --debug        enable debug output
@@ -231,6 +232,7 @@ my $name;
 my $indexscale = '25';
 my $ncols = '2';
 my $makeindex = 0;
+my $theme = 'black';
 my @mapsasked;
 #$BBWEBHOSTURL = "http://localhost/hobbit"
 #
@@ -253,8 +255,8 @@ my %label;
 my %links;
 my %linkwidth;
 my %fontdef;
-my (%scale_low,%scale_high,%scale_red,%scale_green,%scale_blue);
 
+my %scale;
 my $scales;
 my $title;
 my %text;
@@ -264,13 +266,7 @@ my $background;
 my $map;
 my $bg;
 my %color;
-my %colorspec = {[
-	'BG' => ([0,0,0,127]),
-]};
 my %colorspec;
-$colorspec{'BG'} = ([0,0,0,127]);
-$colorspec{'KEYTEXT'} = ([255,255,255]);
-#print Dumper(\%colorspec);
 my $white;
 my $gray;
 my $black;
@@ -322,7 +318,7 @@ if ($ENV{'CGIBINURL'}) {
 my %optctl=();
 #GetOptions(\%optctl, "config:s", "output:s", "version", "help", "debug", "") || exit(1);
 GetOptions(\%optctl, "image-uri:s", "config:s" => \@mapsasked, "output:s", "version", "help", "debug", "htmloutput:s",
-		 "scale:s","thumbnailscale:s", "ncols:s" , "font:s", "icondir:s", "") || exit(1);
+		 "scale:s","theme:s", "thumbnailscale:s", "ncols:s" , "font:s", "icondir:s", "") || exit(1);
 
 #if($optctl{"config"}) { $CONFIG = $optctl{"config"} };
 
@@ -339,6 +335,8 @@ if($optctl{"help"}) { &usage; exit; }
 if($optctl{"debug"}) { $DEBUG=1; }
 
 if($optctl{'thumbnailscale'}) {$indexscale=$optctl{'thumbnailscale'}};
+
+if($optctl{'theme'}) {$theme=$optctl{'theme'}};
 
 if($optctl{'ncols'}) {$ncols=$optctl{'ncols'}};
 
@@ -420,13 +418,49 @@ sub generate
 	$HEIGHT = 550 * $SCALE;
 	%pos = (
 		KEY => [10 * $SCALE,$HEIGHT/2],
-		TIME =>	[$WIDTH/2,$HEIGHT - 10 * $SCALE],
+		TIME =>	[$WIDTH/2,$HEIGHT - 20 * $SCALE],
+		TITLE => [$WIDTH/2,20 * $SCALE],
 	);
 	%font = (
-		KEY => 3,
+		KEY => 4,
+		LABEL => 4,
 		TITLE => 5,
 		TIME => 1,
 	);
+	if ($theme eq 'white') {
+		%colorspec = (
+#	            'BG' => [255,255,255,127],
+	            'BG' => [255,255,255],
+		    'KEYBG' => [255,255,255],
+		    'KEYOUTLINE' => [0,0,0],
+		    'KEYTEXT' => [0,0,0],
+		    'TIME' => [0,0,0],
+		    'TITLE' => [0,0,0],
+		);
+	} else {
+		warn "Unknown theme $theme, using black" if ($theme ne 'black');
+		%colorspec = (
+	            'BG' => [0,0,0,127],
+#	            'BG' => [0,0,0],
+		    'KEYBG' => [0,0,0],
+		    'KEYOUTLINE' => [255,255,255],
+		    'KEYTEXT' => [255,255,255],
+		    'TIME' => [255,255,255],
+		    'TITLE' => [255,255,255],
+		);
+	}
+	%scale = (
+		'0-1'	=> [255,255,255],
+		'1-10'	=> [140,0,255],
+		'10-25'	=> [32,32,255],
+		'25-50'	=> [0,192,255],
+		'50-75' => [0,240,0],
+		'75-90'	=> [240,240,0],
+		'90-95'	=> [255,128,0],
+		'95-100' => [255,0,0],
+	);
+	$scales = scalar keys(%scale);
+
 
 	print "Reading config $CONFIG\n" if $DEBUG;
 	&read_config($CONFIG) or next;
@@ -849,6 +883,7 @@ sub icon {
 	my ($icon,@pos) = @_;
 	my ($iconname,$iconsize,$iconfile,$iconimage);
 	$icon =~ s,.*/([^/]*)$,$1, if ($icon !~ /^\//);
+	$icon =~ s/-black//g;
 	if ($SCALE != 1) {
 		if ($icon =~ m/^(\D+)-(\d+)\.png$/) {
 			print "Trying to scale $icon dimension $2\n" if $DEBUG;
@@ -860,13 +895,16 @@ sub icon {
 		}
 	}
 			
-	$iconfile = $ICONDIR . "/" . $icon if ($icon !~ /^\//);
+	$iconfile = $ICONDIR . "/$theme/" . $icon if ($icon !~ /^\//);
 	if (-f $iconfile) {
 		print "Trying to merge in $iconfile\n" if ($DEBUG);
 		if ($iconimage = GD::Image->newFromPng($iconfile,1)) {
-			my $myblack = $iconimage->colorAllocate(0,0,0);
-			#my $mywhite = $iconimage->colorAllocate(255,255,255);
-			$iconimage->transparent($myblack);
+			# Even though we have the background, the actual
+			# color values may differ between the background (read or created)
+			# and the icon, so get a new color from the icon.
+			# If we don't do this, we get translucent rectangles
+			my $mybg = $iconimage->colorAllocate(@{$colorspec{'BG'}}[0 .. 2]);
+			$iconimage->transparent($mybg);
 			my @bounds = $iconimage->getBounds;
 			my @location = ($pos[0]-($bounds[0]/2),$pos[1]-($bounds[1]/2));
 			print "ICON: placing $icon at @location\n" if $DEBUG;
@@ -951,28 +989,29 @@ sub annotation{
 		$coords[0]+$pad,
 		$coords[1]+$pad+$coords1[1]-$coords1[7],
 	);
-	foreach(sort {$scale_low{$a}<=>$scale_low{$b}} keys %scale_low){
-			my @textbounds = text_bounds(\%keyfont,"$scale_low{$_}-$scale_high{$_}%");
-			my $textheight = $textbounds[3]-$textbounds[1];
-			my $textwidth = $textbounds[2]-$textbounds[0];
+	foreach(sort keys %scale) {
+		my @textbounds = text_bounds(\%keyfont,"$_%");
+		my $textheight = $textbounds[3]-$textbounds[1];
+		my $textwidth = $textbounds[2]-$textbounds[0];
 		$currentpos[1] = $currentpos[1]+$textheight;
 		$map->filledRectangle(
 			$currentpos[0]+(6*$SCALE),
 			$currentpos[1]+$textbounds[1],
 			$currentpos[0]+((6+16)*$SCALE),
 			$currentpos[1]+$textheight+$textbounds[1],
-			$color{$_});
+			$color{$_}
+		);
 
 		if ($keyfont{'type'} eq 'gd') {
 			$map->string($keyfont{'gdfont'},
 				$currentpos[0]+((6+20)*$SCALE),
 				$currentpos[1],
-				"$scale_low{$_}-$scale_high{$_}%", $color{'KEYTEXT'});
+				"$_%", $color{'KEYTEXT'});
 		} elsif ($keyfont{'type'} eq 'ttf') {
 			$map->stringFT($color{'KEYTEXT'},$keyfont{'fontfile'},$keyfont{'fontsize'},0,
 				$currentpos[0]+26*$SCALE, 
 				$currentpos[1],
-				"$scale_low{$_}-$scale_high{$_}%", { resolution=>'72,72'});
+				"$_%", { resolution=>'72,72'});
 		}
 	}
 }
@@ -998,9 +1037,10 @@ sub text_bounds {
 sub select_color {
 	my($rate)=($_[0]>100) ? 100:$_[0];
 	if($rate=="0"){return($darkgray)}
-	foreach(sort {$scale_high{$a}<=>$scale_high{$b}} keys %scale_high){
-		if($scale_low{$_}<=$rate && $rate<=$scale_high{$_}){
-			print "Color for $rate is $color{$_}\n" if ($DEBUG);
+	foreach(sort keys %scale){
+		my ($scale_low,$scale_high) = split /-/;
+		if($scale_low<=$rate && $rate<=$scale_high){
+			print "Color for $rate is $scale{$_} ($_)\n" if ($DEBUG);
 			return($color{$_});
 		}
 	}
@@ -1021,8 +1061,8 @@ sub alloc_colors {
 		}
 	}
 
-	foreach(keys %scale_red){
-		$color{$_} = $map->colorAllocate($scale_red{$_},$scale_green{$_},$scale_blue{$_});
+	foreach(keys %scale){
+		$color{$_} = $map->colorAllocate($scale{$_}[0],$scale{$_}[1],$scale{$_}[2]);
 	}
 }
 
@@ -1060,18 +1100,12 @@ my($node,$link);
 
 print "\nReading configuration file $config\n";
 
-$scales=0;
-undef %scale_low;
-undef %scale_high;
-undef %scale_red;
-undef %scale_green;
-undef %scale_blue;
-
 my $last_item = "";
 my $nodea;
 my $nodeb;
 my $testa;
 my $testb;
+my $localscale = 0;
 #my $title = '';
 open(CONF,$config) or warn "Cannot open config file $config: $!\n";
 while(<CONF>){
@@ -1251,11 +1285,12 @@ while(<CONF>){
 	#	print "found $1 COLOR: @{$colorspec{$1}}\n" if($DEBUG);
 	#}
 	if(/^\s*SCALE\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/i){
-		$scale_low{"$1:$2"}=$1;
-		$scale_high{"$1:$2"}=$2;
-		$scale_red{"$1:$2"}=$3;
-		$scale_green{"$1:$2"}=$4;
-		$scale_blue{"$1:$2"}=$5;
+		if ($localscale == 0 ) {
+			undef %scale;
+			$localscale = 1;
+			$scales = 0;
+		}
+		$scale{"$1-$2"} = [$3,$4,$5];
 		$scales++;
 		print "found SCALE DATA: $1:$2 $3:$4:$5\n" if($DEBUG);
 	}
