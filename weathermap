@@ -667,7 +667,7 @@ LINK: foreach my $link (sort keys %links) {
 	&label(
 		&middle($posa[0],$middle[0] + 0.1 * ($posb[0]-$posa[0])),
 		&middle($posa[1],$middle[1] + 0.1 * ($posb[1]-$posa[1])),
-		$outlabel, 0,$fontdef{2},"","");
+		$outlabel, 0,$fontdef{$font{'LABEL'}},"","");
 
 
 	&draw_arrow(
@@ -688,7 +688,7 @@ LINK: foreach my $link (sort keys %links) {
 	&label(
 		&middle($posb[0],$middle[0] + 0.1 * ($posa[0]-$posb[0])),
 		&middle($posb[1],$middle[1] + 0.1 * ($posa[1]-$posb[1])),
-		$inlabel, 0, $fontdef{2},"","");
+		$inlabel, 0, $fontdef{$font{'LABEL'}},"","");
 
 }
 print "\n" if($DEBUG);
@@ -698,7 +698,7 @@ foreach (sort keys %nodes) {
 		&icon($nodes{$_}{'icon'},@{$nodes{$_}{'pos'}})
 	}
 	if ($nodes{$_}{'label'} ne '') {
-		&label($nodes{$_}{'pos'}[0],$nodes{$_}{'pos'}[1],$nodes{$_}{'label'},2,$fontdef{2},$_,$nodes{$_}{'color'});
+		&label($nodes{$_}{'pos'}[0],$nodes{$_}{'pos'}[1],$nodes{$_}{'label'},2,$fontdef{$font{'LABEL'}},$_,$nodes{$_}{'color'});
 	}
 	#$map->alphaBlending(1);
 	#$map->alphaBlending(0);
@@ -942,7 +942,7 @@ sub annotation{
 	my($title)= (defined $text{'KEY'}) ? $text{'KEY'} : "Traffic load";
 
 	my $t=gmtime(time);
-	$map->string(gdSmallFont, @{${pos}{'TIME'}}, "Last update on $t UTC", $color{'KEYTEXT'}) if (@{${pos}{'TIME'}});
+	$map->string(gdSmallFont, @{${pos}{'TIME'}}, "Last update on $t UTC", $color{'TIME'}) if (@{${pos}{'TIME'}});
 	my %keyfont = %{$fontdef{$font{'KEY'}}};
 	my $pad = 5*$SCALE;
 	my @coords1;
@@ -1266,7 +1266,7 @@ while(<CONF>){
 		print "found FONT DEFINITION $1: file: $fontdef{$1}{'fontfile'}, size $fontdef{$1}{'fontsize'}\n" if($DEBUG);
 	}
 
-	if(/^\s*(KEY|TITLE|TIME)FONT\s+(\d+)/i){
+	if(/^\s*(KEY|LABEL|TITLE|TIME)FONT\s+(\d+)/i){
 		$font{$1} = $2;
 		print "found $1 FONT: $font{$1}\n" if($DEBUG);
 	}
