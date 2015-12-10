@@ -471,8 +471,9 @@ sub generate
 if($background){
 	open (PNG,"$background") or { warn "$background: $!\n" and return 0};
 	$map = newFromPng GD::Image(*{PNG}) or  {warn "newFromPng failed." and return 0};
-	$bg = $map->colorClosest(@{$colorspec{'BG'}});
-	$map->transparent($bg);
+	($WIDTH,$HEIGHT) = $map->getBounds();
+	$bg = $map->colorClosest(@{$colorspec{'BG'}}[0 .. 2]);
+	$map->transparent($bg) if ($colorspec{'BG'}[3] == 127);
 	close PNG;
 } else {
 	print "Starting new image with dimensions $WIDTH x $HEIGHT\n" if $DEBUG;
