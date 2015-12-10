@@ -201,6 +201,7 @@ use Getopt::Long 2.32;
 use GD;
 use Data::Dumper;
 use File::Find;
+use Pod::Usage;
 use strict;
 
 ################################################################
@@ -325,8 +326,9 @@ GetOptions(\%optctl,
 	"help",
 	"debug",
 	"htmloutput:s",
-	"scale:s","theme:s",
-	"thumbnailscale:s",
+	"scale:s",
+	"theme:s",
+#	"thumbnailscale:s",
 	"ncols:s",
 	"font:s",
 	"icondir:s",
@@ -342,11 +344,11 @@ if($optctl{"scale"}) { $SCALE = $optctl{"scale"} };
 
 if($optctl{"version"}) { &version; exit; }
 
-if($optctl{"help"}) { &usage; exit; }
+if($optctl{"help"}) { pod2usage; exit; }
 
 if($optctl{"debug"}) { $DEBUG=1; }
 
-if($optctl{'thumbnailscale'}) {$indexscale=$optctl{'thumbnailscale'}};
+#if($optctl{'thumbnailscale'}) {$indexscale=$optctl{'thumbnailscale'}};
 
 if($optctl{'theme'}) {$theme=$optctl{'theme'}};
 
@@ -1465,21 +1467,3 @@ Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
 EOM
 }
 
-sub usage {
-        print <<EOM;
-Network Wearthermap v$VERSION - http://netmon.grnet.gr/weathermap/
-Usage: $0 [OPTION]...
-
- -c, --config=FILE  configuration file (default $CONFIG)
- -o, --output=FILE  output image file default (default $OUTPUT)
- -s, --scale=INT    Scale the entire map by an integer value (for large displays)
- -f, --font=FILE    Default TTF font to use (for FONTS 1-5 when scaled)
- -v, --version      print version
- -h, --help         print this text
- -d, --debug        enable debug output
- --htmloutput=FILE  enable HTML output to FILE
- --image-uri=URI    use URI for the IMG tag when generating HTML
- --icondir=DIR      Directory where node icons are to be found
-
-EOM
-}
