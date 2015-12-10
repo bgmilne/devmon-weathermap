@@ -317,8 +317,20 @@ if ($ENV{'CGIBINURL'}) {
 
 my %optctl=();
 #GetOptions(\%optctl, "config:s", "output:s", "version", "help", "debug", "") || exit(1);
-GetOptions(\%optctl, "image-uri:s", "config:s" => \@mapsasked, "output:s", "version", "help", "debug", "htmloutput:s",
-		 "scale:s","theme:s", "thumbnailscale:s", "ncols:s" , "font:s", "icondir:s", "") || exit(1);
+GetOptions(\%optctl,
+	"image-uri:s",
+	"config:s" => \@mapsasked,
+	"output:s",
+	"version",
+	"help",
+	"debug",
+	"htmloutput:s",
+	"scale:s","theme:s",
+	"thumbnailscale:s",
+	"ncols:s",
+	"font:s",
+	"icondir:s",
+	"") || exit(1);
 
 #if($optctl{"config"}) { $CONFIG = $optctl{"config"} };
 
