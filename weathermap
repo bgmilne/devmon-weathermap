@@ -597,8 +597,8 @@ LINK: foreach my $link (sort keys %links) {
 	my $test1 = $links{$link}{'testa'};
 	my $test2 = $links{$link}{'testb'};
 	if ($int1 eq "" and $int2 eq "") {
-		print "Link $link has no interfaces: int1:$int1 int2:$int2, skipping link\n";
-		next;
+		print "Link $link has no interfaces, interface rate wont be available\n";
+		#next;
 	}
 
 	print "Link details: $node1 - $int1 to $node2 - $int2\n" if ($DEBUG);
@@ -944,7 +944,7 @@ sub annotation{
 		if ($fontdef{$font{'TITLE'}}{'type'} eq 'gd') {
 			$map->string(gdLargeFont,@{${pos}{'TITLE'}},$title,$color{'TITLE'});
 		} elsif ($fontdef{$font{'TITLE'}}{'type'} eq 'ttf') {
-			@coords = text_bounds($fontdef{$font{'TITLE'}},"$scale_low{$_}-$scale_high{$_}%");
+			@coords = text_bounds($fontdef{$font{'TITLE'}},"$_%");
 			print "TITLE POS OFFSET: @coords\n" if $DEBUG;
 			my @fixedpos = (${pos}{'TITLE'}[0] - $coords[0],${pos}{'TITLE'}[1] - $coords[1]);
 			print "TITLE POS: Original loc: @{${pos}{'TITLE'}} (" . ${pos}{'TITLE'}[0] . "," . ${pos}{'TITLE'}[1] . "), moving by $coords[0],$coords[1], new pos: @fixedpos\n" if $DEBUG;
