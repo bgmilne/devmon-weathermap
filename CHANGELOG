@@ -1,3 +1,24 @@
+v1.1.6: 10 Dec 2015 - Buchan Milne
+	Fix the case of a single map with output in a dir
+	Move the icons to somewhere accessible by the web server 
+	Fix some font and text colour handling
+	Fix handling of tranparency for a pre-supplied image
+	Add theme support (default black) and a default key/scale  
+	Icons will be found in the theme subdirectory of the images dir
+	Move and rename images for pending themes
+	Log more consistently when not in debug
+	Support Xymon 4.3.x
+	Fix link label location for links with a 'VIA'
+	Allow overriding the icondir (--icondir)
+	    This also means that all relative icon paths may not contain a directory name
+	    (any leading characters up to the last / will be removed from ICON values except
+	    for absolute paths)
+	Use strict mode, and fix all the problems it highlighted.
+	Make the background of the map match the worst node
+	Make the backgound of the index match the worst map
+	Make provision for overriding hostname of a node
+
+
 v1.1.5: 10 Jun 2009 - Buchan Milne
 	Add support for an image compressing command, defaults to optipng
 	Generate png and html to temporary files to avoid serving broken files
